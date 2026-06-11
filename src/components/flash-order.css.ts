@@ -3,7 +3,7 @@
 import { style, styleVariants } from '@vanilla-extract/css';
 import { vars } from '../theme.css';
 
-const COLS = '2.4rem 1fr 4.8rem 1fr 2.4rem';
+const COLS = '3rem 1fr 4.8rem 1fr 3rem';
 
 export const wrap = style({
     display: 'flex',
@@ -284,6 +284,7 @@ export const chipCell = style([
     cellBase,
     {
         justifyContent: 'center',
+        gap: '2px',
     },
 ]);
 
@@ -319,6 +320,26 @@ export const orderChip = styleVariants({
             ':hover': { color: '#fff', background: vars.color.down },
         },
     ],
+});
+
+// solid badge = today's filled quantity at this price (not clickable),
+// in contrast to the outlined working-order chip
+const fillBase = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.62rem',
+    fontWeight: 700,
+    lineHeight: 1,
+    minWidth: '1.4rem',
+    padding: '3px 3px',
+    textAlign: 'center',
+    borderRadius: vars.radius.sm,
+    color: '#fff',
+    cursor: 'default',
+});
+
+export const fillBadge = styleVariants({
+    buy: [fillBase, { background: vars.color.up, opacity: 0.85 }],
+    sell: [fillBase, { background: vars.color.down, opacity: 0.85 }],
 });
 
 export const buyCell = style([

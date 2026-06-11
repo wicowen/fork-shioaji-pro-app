@@ -42,6 +42,8 @@ interface RowProps {
     askPct: number;
     myBuy: number;
     mySell: number;
+    buyFill: number;
+    sellFill: number;
     avgMark: boolean;
     band: 'up' | 'down' | null;
     armed: boolean;
@@ -60,6 +62,8 @@ const FlashRow = memo(function FlashRow({
     askPct,
     myBuy,
     mySell,
+    buyFill,
+    sellFill,
     avgMark,
     band,
     armed,
@@ -69,6 +73,14 @@ const FlashRow = memo(function FlashRow({
     return (
         <div className={styles.row[isLast ? 'last' : 'normal']}>
             <div className={styles.chipCell}>
+                {buyFill > 0 && (
+                    <span
+                        className={styles.fillBadge.buy}
+                        title={`今日買進成交 ${buyFill} @ ${text}`}
+                    >
+                        {buyFill}
+                    </span>
+                )}
                 {myBuy > 0 && (
                     <button
                         className={styles.orderChip.buy}
@@ -132,6 +144,14 @@ const FlashRow = memo(function FlashRow({
                     >
                         {mySell}
                     </button>
+                )}
+                {sellFill > 0 && (
+                    <span
+                        className={styles.fillBadge.sell}
+                        title={`今日賣出成交 ${sellFill} @ ${text}`}
+                    >
+                        {sellFill}
+                    </span>
                 )}
             </div>
         </div>
@@ -341,6 +361,26 @@ export function FlashOrder({
             if (t.order.action === 'Buy') cur.buy += remaining;
             else cur.sell += remaining;
             m.set(key, cur);
+        }
+        return m;
+    }, [trades, contract.code]);
+
+    // today's fills aggregated per price level (from each trade's deals)
+    const myFills = useMemo(() => {
+        const m = new Map<string, { buy: number; sell: number }>();
+        for (const t of trades) {
+            const tc = t.contract.code;
+            if (tc !== contract.code && getAliasFor(tc) !== contract.code) {
+                continue;
+            }
+            for (const d of t.status.deals ?? []) {
+                if (!d.quantity) continue;
+                const key = keyOf(Number(d.price));
+                const cur = m.get(key) ?? { buy: 0, sell: 0 };
+                if (t.order.action === 'Buy') cur.buy += d.quantity;
+                else cur.sell += d.quantity;
+                m.set(key, cur);
+            }
         }
         return m;
     }, [trades, contract.code]);
@@ -618,6 +658,7 @@ export function FlashOrder({
                     const key = keyOf(price);
                     const lv = book.get(key);
                     const mine = myOrders.get(key);
+                    const fills = myFills.get(key);
                     return (
                         <FlashRow
                             key={key}
@@ -631,6 +672,8 @@ export function FlashOrder({
                             askPct={lv?.ask ? (lv.ask / maxVol) * 90 : 0}
                             myBuy={mine?.buy ?? 0}
                             mySell={mine?.sell ?? 0}
+                            buyFill={fills?.buy ?? 0}
+                            sellFill={fills?.sell ?? 0}
                             avgMark={pos !== null && key === pos.avgKey}
                             band={
                                 limitUp > 0 && key === keyOf(limitUp)
