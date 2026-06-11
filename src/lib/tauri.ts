@@ -78,16 +78,20 @@ export interface DesktopSettings {
     apiKey: string;
     secretKey: string;
     production: boolean;
+    autoStart: boolean; // start the shioaji server when the app launches
 }
 
 export async function loadDesktopSettings(): Promise<DesktopSettings> {
-    if (!isTauri) return { apiKey: '', secretKey: '', production: false };
+    if (!isTauri) {
+        return { apiKey: '', secretKey: '', production: false, autoStart: true };
+    }
     const { LazyStore } = await import('@tauri-apps/plugin-store');
     const store = new LazyStore('settings.json');
     return {
         apiKey: (await store.get<string>('apiKey')) ?? '',
         secretKey: (await store.get<string>('secretKey')) ?? '',
         production: (await store.get<boolean>('production')) ?? false,
+        autoStart: (await store.get<boolean>('autoStart')) ?? true,
     };
 }
 
@@ -98,6 +102,7 @@ export async function saveDesktopSettings(s: DesktopSettings) {
     await store.set('apiKey', s.apiKey);
     await store.set('secretKey', s.secretKey);
     await store.set('production', s.production);
+    await store.set('autoStart', s.autoStart);
     await store.save();
 }
 

@@ -30,6 +30,7 @@ export function ServerManager({
         apiKey: '',
         secretKey: '',
         production: false,
+        autoStart: true,
     });
     const [busy, setBusy] = useState(false);
     const [lastOutput, setLastOutput] = useState('');
@@ -228,6 +229,18 @@ export function ServerManager({
                             </span>
                         )}
 
+                        <button
+                            className={
+                                styles.opt[settings.autoStart ? 'on' : 'off']
+                            }
+                            onClick={() =>
+                                persist({ autoStart: !settings.autoStart })
+                            }
+                        >
+                            {settings.autoStart
+                                ? '✓ App 啟動時自動啟動伺服器'
+                                : 'App 啟動時自動啟動伺服器'}
+                        </button>
                         <button
                             className={styles.menuItem}
                             onClick={() => checkForUpdates(false)}
