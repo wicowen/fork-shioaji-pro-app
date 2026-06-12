@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Shioaji Pro — Agent 交易時代的起點：完整開源的交易終端</title>
-<meta name="description" content="交易工具的誕生方式已經不一樣了 — 這個完整的交易終端全程由 coding agent 打造並開源。在 Claude Code / Codex 裝上 shioaji skill 客製自己的交易介面，打造自己的版本時還能串接自己的交易 agent。" />
-<meta property="og:title" content="Shioaji Pro — Agent 交易時代的起點" />
-<meta property="og:description" content="為 agent 交易鋪路的開源專案：用 Claude Code / Codex 加上 shioaji skill 客製你的交易介面，架構開放、未來可串接你自己的交易 agent — 這個終端就是能力證明。" />
-<meta property="og:image" content="https://sinotrade.github.io/shioaji-pro-app/screenshot-futures.png" />
+<title>Shioaji Pro — 內建 AI Agent 的開源交易終端</title>
+<meta name="description" content="Agent 交易時代正式開盤：全程由 coding agent 打造的台股交易終端，現在內建 AI Agent — 接上 Claude、OpenAI，或直接用你的 Codex 訂閱。閃電下單、鋪單、熱力圖、選擇權損益圖，預設模擬環境，下載即玩。" />
+<meta property="og:title" content="Shioaji Pro — 內建 AI Agent 的開源交易終端" />
+<meta property="og:description" content="Agent 不只寫了這個終端，現在還住了進來：問行情、巡庫存、排程任務、到價出手（需你授權）。閃電下單與全套專業面板，100% 開源，預設模擬環境安全試玩。" />
+<meta property="og:image" content="https://sinotrade.github.io/shioaji-pro-app/shot-terminal-dark.png" />
 <meta property="og:type" content="website" />
 <style>
   :root {
@@ -38,8 +38,18 @@
   }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  svg.i { width: 20px; height: 20px; }
 
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  /* ---- reveal on scroll (content visible by default; JS only adds the
+         entrance animation, so a missing/broken IntersectionObserver can
+         never hide the page) ---- */
+  @keyframes rvIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+  .rv.in { animation: rvIn 0.55s ease both; }
+  @media (prefers-reduced-motion: reduce) { .rv.in { animation: none; } }
 
   /* ---- nav ---- */
   nav {
@@ -52,43 +62,60 @@
   .brand { display: flex; align-items: baseline; gap: 8px; font-weight: 700; color: var(--fg); }
   .brand:hover { text-decoration: none; }
   .brand .sub { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
-  .nav-links { display: flex; gap: 20px; margin-left: auto; font-size: 0.85rem; }
+  .nav-links { display: flex; gap: 20px; margin-left: auto; font-size: 0.85rem; align-items: center; }
   .nav-links a { color: var(--muted); }
   .nav-links a:hover { color: var(--fg); text-decoration: none; }
   .nav-gh { display: flex; align-items: center; gap: 6px; }
+  @media (max-width: 720px) { .nav-links a:not(.nav-gh) { display: none; } }
 
   /* ---- hero ---- */
-  .hero { padding: 72px 0 40px; text-align: center; }
-  .kicker {
-    font-family: var(--mono);
-    font-size: 0.74rem;
-    font-weight: 600;
-    letter-spacing: 0.32em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 18px;
+  .hero {
+    padding: 76px 0 40px; text-align: center; position: relative; overflow: hidden;
   }
-  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; text-align: left; }
-  @media (max-width: 720px) { .install-grid { grid-template-columns: 1fr; } }
+  .hero::before {
+    content: ""; position: absolute; inset: -40% -20% auto;  height: 130%;
+    background:
+      radial-gradient(600px 320px at 30% 10%, rgba(79, 140, 255, 0.14), transparent 70%),
+      radial-gradient(520px 300px at 72% 6%, rgba(22, 179, 137, 0.08), transparent 70%);
+    pointer-events: none;
+  }
+  .hero > .wrap { position: relative; }
+  .new-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 0.78rem; font-weight: 600;
+    padding: 5px 14px 5px 6px;
+    border: 1px solid rgba(79, 140, 255, 0.45);
+    border-radius: 999px;
+    background: var(--accent-dim);
+    color: var(--fg);
+    margin-bottom: 22px;
+  }
+  .new-pill:hover { text-decoration: none; border-color: var(--accent); }
+  .new-pill .tagchip {
+    font-family: var(--mono); font-size: 0.68rem; font-weight: 700;
+    background: var(--accent); color: #fff;
+    padding: 2px 8px; border-radius: 999px;
+  }
   .hero h1 {
-    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-size: clamp(2rem, 5vw, 3.3rem);
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1.15;
   }
   .hero h1 .grad {
-    background: linear-gradient(135deg, var(--accent) 0%, #7fb3ff 60%, #b8d4ff 100%);
+    background: linear-gradient(135deg, var(--accent) 0%, #7fb3ff 55%, #9fe8d0 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
   .hero p.tag {
-    margin: 18px auto 0;
-    max-width: 620px;
+    margin: 20px auto 0;
+    max-width: 660px;
     font-size: 1.05rem;
     color: var(--muted);
   }
-  .badges { margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .hero p.tag strong { color: var(--fg); }
+  .badges { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .badge {
     font-family: var(--mono);
     font-size: 0.72rem;
@@ -98,14 +125,14 @@
     color: var(--muted);
     background: var(--bg-soft);
   }
+  .badge.hot { color: var(--accent); border-color: rgba(79, 140, 255, 0.5); }
   .badge.sim { color: var(--amber); border-color: rgba(224, 164, 60, 0.4); }
-
   .cta-row { margin-top: 32px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
-    padding: 12px 24px;
+    padding: 13px 26px;
     border-radius: var(--radius);
-    font-size: 0.95rem; font-weight: 600;
+    font-size: 0.97rem; font-weight: 650;
     border: 1px solid var(--border-bright);
     background: var(--panel);
     color: var(--fg);
@@ -116,13 +143,13 @@
     background: var(--accent);
     border-color: var(--accent);
     color: #fff;
-    box-shadow: 0 8px 24px rgba(79, 140, 255, 0.25);
+    box-shadow: 0 8px 28px rgba(79, 140, 255, 0.3);
   }
-  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.primary:hover { filter: brightness(1.12); box-shadow: 0 10px 34px rgba(79, 140, 255, 0.4); }
   .cta-note { margin-top: 12px; font-size: 0.78rem; color: var(--muted); font-family: var(--mono); }
   .all-dl { margin-top: 6px; font-size: 0.8rem; }
 
-  /* ---- screenshot ---- */
+  /* ---- hero screenshot ---- */
   .shot { padding: 36px 0 8px; }
   .shot-frame {
     border: 1px solid var(--border-bright);
@@ -132,7 +159,7 @@
     background: var(--bg-soft);
   }
   .shot-frame img { display: block; width: 100%; height: auto; }
-  .shot-tabs { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+  .shot-tabs { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
   .shot-tab {
     font-size: 0.78rem; padding: 4px 14px;
     border: 1px solid var(--border); border-radius: 999px;
@@ -142,14 +169,25 @@
   .shot-tab.on { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 
   /* ---- sections ---- */
-  section { padding: 64px 0; }
-  .sec-head { text-align: center; margin-bottom: 40px; }
-  .sec-head h2 { font-size: 1.7rem; font-weight: 750; letter-spacing: -0.01em; }
-  .sec-head p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
+  section { padding: 68px 0; }
+  .sec-head { text-align: center; margin-bottom: 42px; }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .sec-head h2 { font-size: 1.75rem; font-weight: 750; letter-spacing: -0.01em; }
+  .sec-head p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; max-width: 640px; margin-inline: auto; }
 
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid.g4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 980px) { .grid.g4 { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 860px) { .grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .grid, .grid.g4 { grid-template-columns: 1fr; } }
   .card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -174,6 +212,34 @@
     padding: 1px 5px; color: var(--muted); background: var(--bg-soft);
   }
 
+  /* ---- feature split rows ---- */
+  .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: center; padding: 34px 0; }
+  .feat.flip .feat-media { order: 2; }
+  @media (max-width: 860px) { .feat { grid-template-columns: 1fr; gap: 22px; } .feat.flip .feat-media { order: 0; } }
+  .feat-media { text-align: center; }
+  .feat-media img {
+    max-width: 100%; height: auto; max-height: 560px;
+    border: 1px solid var(--border-bright); border-radius: 12px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  }
+  .feat-body .kicker { margin-bottom: 8px; }
+  .feat-body h3 { font-size: 1.45rem; font-weight: 750; letter-spacing: -0.01em; margin-bottom: 10px; }
+  .feat-body > p { color: var(--muted); font-size: 0.95rem; margin-bottom: 16px; }
+  .feat-body > p strong { color: var(--fg); }
+  .feat-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .feat-list li { display: flex; gap: 10px; font-size: 0.88rem; color: var(--muted); align-items: baseline; }
+  .feat-list li::before { content: "▸"; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  .feat-list li strong { color: var(--fg); font-weight: 650; }
+
+  /* provider chips in agent section */
+  .providers { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 4px; }
+  .provider {
+    font-family: var(--mono); font-size: 0.74rem; font-weight: 600;
+    padding: 5px 12px; border-radius: 7px;
+    border: 1px solid var(--border-bright); background: var(--bg-soft); color: var(--fg);
+  }
+  .provider.codex { border-color: rgba(22, 179, 137, 0.5); color: var(--down); }
+
   /* ---- quickstart ---- */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
   @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
@@ -195,6 +261,9 @@
     border-radius: 4px; padding: 1px 6px; color: var(--fg);
   }
 
+  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; text-align: left; }
+  @media (max-width: 720px) { .install-grid { grid-template-columns: 1fr; } }
+
   /* ---- download table ---- */
   #downloads .dl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   @media (max-width: 720px) { #downloads .dl-grid { grid-template-columns: 1fr; } }
@@ -213,6 +282,18 @@
   }
   .dl-link:hover { border-color: var(--accent); text-decoration: none; }
   .dl-link .ext { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+
+  /* ---- floating CTA ---- */
+  #float-dl {
+    position: fixed; right: 20px; bottom: 20px; z-index: 60;
+    display: none; align-items: center; gap: 8px;
+    padding: 11px 20px; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: 0.88rem; font-weight: 650;
+    box-shadow: 0 12px 32px rgba(79, 140, 255, 0.45);
+  }
+  #float-dl:hover { text-decoration: none; filter: brightness(1.1); }
+  #float-dl.show { display: inline-flex; }
+  @media (max-width: 560px) { #float-dl { right: 12px; bottom: 12px; } }
 
   /* ---- footer ---- */
   footer {
@@ -236,9 +317,11 @@
   <div class="wrap nav-inner">
     <a class="brand" href="#">Shioaji Pro <span class="sub">交易終端</span></a>
     <div class="nav-links">
-      <a href="#features">功能</a>
-      <a href="#opensource">Agent 交易</a>
-      <a href="#quickstart">快速開始</a>
+      <a href="#agent">AI Agent</a>
+      <a href="#execution">下單</a>
+      <a href="#market">看盤</a>
+      <a href="#desktop">桌面</a>
+      <a href="#opensource">開源</a>
       <a href="#downloads">下載</a>
       <a class="nav-gh" href="https://github.com/Sinotrade/shioaji-pro-app" target="_blank" rel="noopener">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -250,139 +333,245 @@
 
 <header class="hero">
   <div class="wrap">
-    <p class="kicker">The Agentic Trading Era</p>
-    <h1>Agent 交易時代的起點<br /><span class="grad">一個完整開源的交易終端</span></h1>
+    <a class="new-pill" id="new-pill" href="https://github.com/Sinotrade/shioaji-pro-app/releases/latest" target="_blank" rel="noopener">
+      <span class="tagchip">NEW</span>
+      Codex 訂閱直接驅動 AI Agent・全新通知系統
+    </a>
+    <h1>Agent 交易時代，正式開盤<br /><span class="grad">內建 AI Agent 的開源交易終端</span></h1>
     <p class="tag">
-      交易工具的誕生方式，已經不一樣了。這個終端從第一行程式碼到簽章上架，
-      全程由 coding agent 完成 — 過去要一支團隊的工程，現在發生在對話之間。
-      Shioaji Pro 把這條路完整開源：裝上
-      <a href="https://github.com/Sinotrade/Shioaji" target="_blank" rel="noopener">shioaji skill</a>，
-      你的 Claude Code／Codex 就能客製出專屬於你的交易介面；
-      打造自己的版本時，再把<strong>你自己的交易 agent</strong> 串進同一套 API。
-      新世代不在路上 — 它已經能下單了。
+      這個終端從第一行程式碼到簽章上架，全程由 coding agent 完成。
+      上一版，我們說「為 agent 交易鋪路」— 這一版，<strong>agent 直接住了進來</strong>：
+      接上 Claude、OpenAI，或拿你現成的 <strong>Codex 訂閱</strong>就能用。
+      問行情、巡庫存、把日常流程存成技能、排程到價自動出手 — 下單永遠由你授權。
+      預設模擬環境，<strong>下載即玩，分文不取</strong>。
     </p>
     <div class="badges">
-      <span class="badge" style="color: var(--accent); border-color: var(--accent);">🤖 AI Agent 開發</span>
-      <span class="badge" style="color: var(--accent); border-color: var(--accent);">100% 開源</span>
+      <span class="badge hot">AI Agent 內建</span>
+      <span class="badge hot">100% 開源</span>
       <span class="badge" id="ver-badge">v—</span>
       <span class="badge">macOS ・ Windows ・ Linux</span>
       <span class="badge sim">預設模擬環境</span>
     </div>
     <div class="cta-row">
-      <a class="btn primary" href="https://github.com/Sinotrade/shioaji-pro-app">★ 查看原始碼</a>
-      <a class="btn" id="cta-dl" href="https://github.com/Sinotrade/shioaji-pro-app/releases/latest">⬇ 下載體驗</a>
+      <a class="btn primary" id="cta-dl" href="https://github.com/Sinotrade/shioaji-pro-app/releases/latest">⬇ 下載體驗</a>
+      <a class="btn" href="https://github.com/Sinotrade/shioaji-pro-app">★ 查看原始碼</a>
     </div>
-    <p class="cta-note" id="cta-note">下載即用・macOS 已簽章公證・內建自動更新</p>
+    <p class="cta-note" id="cta-note">下載即用・macOS 已簽章公證・內建自動更新・模擬環境安全試玩</p>
     <p class="all-dl"><a href="#downloads">所有平台下載 ↓</a></p>
   </div>
 </header>
 
 <div class="shot wrap">
-  <div class="shot-frame"><img id="shot-img" src="screenshot-futures.png" alt="Shioaji Pro 交易終端畫面" /></div>
+  <div class="shot-frame"><img id="shot-img" src="shot-terminal-dark.png" alt="Shioaji Pro 交易終端 — 期貨夜盤實況" /></div>
   <div class="shot-tabs">
-    <button class="shot-tab on" data-src="screenshot-futures.png">期貨夜盤</button>
-    <button class="shot-tab" data-src="screenshot-dark.png">深色主題</button>
-    <button class="shot-tab" data-src="screenshot-light.png">淺色主題</button>
+    <button class="shot-tab on" data-src="shot-terminal-dark.png">期貨夜盤實況</button>
+    <button class="shot-tab" data-src="shot-terminal-light.png">淺色主題</button>
   </div>
 </div>
 
-<section id="features">
+<section id="agent" style="padding-bottom: 30px;">
   <div class="wrap">
-    <div class="sec-head">
-      <h2>為當沖與短線而生的下單體驗</h2>
-      <p>每個功能都針對台股交易流程設計，全部以公開的 Shioaji API 實作 — 股票、期貨、選擇權</p>
+    <div class="sec-head rv">
+      <p class="kicker">Built-in AI Agent</p>
+      <h2>你的盤中副駕，住在終端裡</h2>
+      <p>不是聊天機器人 — 它接著行情、持倉、帳務與下單工具，像 Claude Code 之於程式碼，這個 agent 之於你的交易日常</p>
     </div>
-    <div class="grid">
-      <div class="card">
-        <div class="ico">⚡</div>
-        <h3>閃電下單</h3>
-        <p>價格梯自動跟隨現價、永不丟失行情。點買賣量即下限價單、在途委託點擊即刪、今日成交標示於實際價位，漲跌停為捲動邊界。</p>
+
+    <div class="feat rv">
+      <div class="feat-media">
+        <img src="shot-agent-skills.png" alt="AI Agent 技能：把日常 workflow 存成可呼叫的技能" loading="lazy" />
       </div>
-      <div class="card">
-        <div class="ico">📈</div>
-        <h3>圖表點價下單</h3>
-        <p>K 線上直接點價買賣，委託線顯示於圖上 — 拖曳改價、一鍵取消。支援 MA／EMA／布林通道／VWAP 指標疊圖。</p>
-      </div>
-      <div class="card">
-        <div class="ico">🛡</div>
-        <h3>停損停利與風控</h3>
-        <p>停損／停利觸價單、OCO 括弧單、進場自動掛保護。風控中心一鍵鎖定：單筆口數上限、當日虧損上限、全部刪單。</p>
-      </div>
-      <div class="card">
-        <div class="ico">🗂</div>
-        <h3>多面板自由版面</h3>
-        <p>14 種面板自由拖拉組合：五檔、成交明細、分價量表、選擇權 T 字、委託簿熱圖、行情回放。多組版面可儲存，面板可彈出獨立視窗。</p>
-      </div>
-      <div class="card">
-        <div class="ico">☁️</div>
-        <h3>自選清單雲端同步</h3>
-        <p>自選清單存於 Shioaji 帳戶，跨裝置同步。代碼自動判別股票／期貨／指數，排行榜漲跌幅、量、額一鍵切換。</p>
-      </div>
-      <div class="card">
-        <div class="ico">🖥</div>
-        <h3>桌面級整合</h3>
-        <p>內建 shioaji server（免裝 Python）、伺服器管理與健康監控、系統匣常駐、斷線自動重連重訂閱、自動更新。</p>
-      </div>
-      <div class="card">
-        <div class="ico">🎨</div>
-        <h3>主題與紅綠漲跌</h3>
-        <p>深色／午夜／淺色三種主題，紅漲綠跌或綠漲紅跌自由切換，成交閃動只在真實成交時觸發。</p>
-      </div>
-      <div class="card">
-        <div class="ico">⌨️</div>
-        <h3>鍵盤優先</h3>
-        <p>指令面板 <span class="kbd">⌘K</span> 快速切換商品與功能，下單熱鍵、<span class="kbd">Esc</span> 安全鎖定，操作不離鍵盤。</p>
-      </div>
-      <div class="card">
-        <div class="ico">📊</div>
-        <h3>帳務與損益</h3>
-        <p>多帳戶持倉、委託、帳務即時檢視，未實現損益分析、權益數與保證金、交割款試算，持倉一鍵平倉／反手。</p>
+      <div class="feat-body">
+        <p class="kicker">Skills・Procedural Memory</p>
+        <h3>日常流程，變成一句 /技能</h3>
+        <p>
+          內建 shioaji 市場知識與 <strong>開盤巡檢／庫存健檢／收盤總結</strong> 三個起手技能。
+          你常做的流程教它一次，它會<strong>自己存成技能</strong>（Hermes 式程序記憶），下次輸入 <strong>/名稱</strong> 直接執行，越用越懂你。
+        </p>
+        <ul class="feat-list">
+          <li><strong>三種大腦自由換</strong> — 模型清單直接從 API 拉，不用手填</li>
+          <li><strong>排程任務</strong> — 每天 08:45 巡檢、每 5 分鐘掃一輪、到價觸發、委託回報觸發</li>
+          <li><strong>權限你說了算</strong> — 唯讀／確認下單／自動下單三段授權，金鑰只存本機</li>
+          <li><strong>會動手</strong> — 查行情、看持倉、掃排行、下單刪單（風控閘道照樣擋）</li>
+        </ul>
+        <div class="providers">
+          <span class="provider">Claude API</span>
+          <span class="provider">OpenAI API</span>
+          <span class="provider codex">Codex 訂閱 — 不用 API Key</span>
+        </div>
+        <p style="font-size: 0.78rem; color: var(--muted); margin-top: 10px;">
+          已經在用 Codex CLI？登入直接共用，額度算在你的 ChatGPT 訂閱裡。
+        </p>
       </div>
     </div>
   </div>
 </section>
 
-<section id="opensource" style="background: var(--bg-soft); border-block: 1px solid var(--border);">
+<section id="execution" style="background: var(--bg-soft); border-block: 1px solid var(--border);">
   <div class="wrap">
-    <div class="sec-head">
-      <h2>為 Agent 交易鋪路</h2>
-      <p>軟體的寫法變了，交易工具跟著改寫 — 這個專案從第一個 commit 到自動發佈全由 agent 完成，世代交替就從這裡開始</p>
+    <div class="sec-head rv">
+      <p class="kicker">Execution</p>
+      <h2>當沖等級的下單武器庫</h2>
+      <p>股票、期貨、選擇權 — 每一種下單方式都為速度與容錯而生</p>
     </div>
-    <div class="grid">
+
+    <div class="feat rv">
+      <div class="feat-media">
+        <img src="shot-flash.png" alt="閃電下單價格梯 — 點價即下單" loading="lazy" />
+      </div>
+      <div class="feat-body">
+        <p class="kicker">Flash Order</p>
+        <h3>閃電下單：點下去的瞬間，單已經出去了</h3>
+        <p>
+          價格梯<strong>自動跟隨現價、永不丟失行情</strong>，漲跌停就是捲動邊界。
+          點買賣量即下限價單、在途委託點擊即刪、今日成交直接標在實際價位上。
+        </p>
+        <ul class="feat-list">
+          <li><strong>持倉與損益常駐頂端</strong> — 部位、均價、未實現一眼掌握</li>
+          <li><strong>閃電全開</strong> — 自選清單前 N 檔一鍵彈出獨立視窗，8 長條／6 長條自動平鋪</li>
+          <li><strong>市價買賣／平倉／全刪</strong> 一排快捷鍵，<span class="kbd">Esc</span> 安全鎖定</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feat flip rv">
+      <div class="feat-media">
+        <img src="shot-grid.png" alt="鋪單面板 — 一次鋪多檔限價單，動態跟隨現價" loading="lazy" />
+      </div>
+      <div class="feat-body">
+        <p class="kicker">Grid Orders</p>
+        <h3>鋪單：一次鋪一排，還會跟著價格走</h3>
+        <p>
+          設定檔距、檔數、間隔、每檔量，<strong>一鍵鋪出整排限價單</strong>。
+          開啟<strong>動態跟隨</strong>後價格移動會自動撤舊補新，永遠維持與現價的相對距離 — 速率限制與重複下單防護都想好了。
+        </p>
+        <ul class="feat-list">
+          <li><strong>組合單＋到價監控</strong> — 期權兩腳價差，合成價到目標自動以 IOC 出手</li>
+          <li><strong>停損停利／OCO 括弧單</strong> — 進場自動掛保護，觸價即動</li>
+          <li><strong>風控中心</strong> — 單筆口數上限、當日虧損上限、一鍵鎖定全部刪單</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="market">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="kicker">Market View</p>
+      <h2>看盤的每一個角度</h2>
+      <p>從大盤熱力到單一選擇權部位的損益曲線，全部即時</p>
+    </div>
+
+    <div class="feat rv">
+      <div class="feat-media">
+        <img src="shot-heatmap.png" alt="類股熱力圖 — 色深即漲跌幅、依成交額排序" loading="lazy" />
+      </div>
+      <div class="feat-body">
+        <p class="kicker">Sector Heatmap</p>
+        <h3>熱力圖：今天的錢往哪裡流，一眼看完</h3>
+        <p>
+          整個類股攤成一張熱力圖，<strong>色深就是漲跌幅、排序就是成交額</strong>。
+          點任何一格直接連動全終端 — 圖表、五檔、下單面板瞬間切換到那檔股票。
+        </p>
+        <ul class="feat-list">
+          <li><strong>多條件排行榜</strong> — 漲幅／跌幅／量／額一鍵切換，可複選條件</li>
+          <li><strong>自選清單小線圖</strong> — Canvas 即時 sparkline 看走勢，雲端同步跨裝置</li>
+          <li><strong>委託簿熱圖・分價量表・行情回放</strong> — 14 種面板自由拖拉組合</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feat flip rv">
+      <div class="feat-media">
+        <img src="shot-payoff.png" alt="選擇權損益圖 — 結算損益曲線與模擬部位" loading="lazy" />
+      </div>
+      <div class="feat-body">
+        <p class="kicker">Options</p>
+        <h3>選擇權：持倉損益曲線即時畫給你看</h3>
+        <p>
+          選擇權持倉自動畫出<strong>結算損益曲線</strong>，最大獲利／最大虧損／損益兩平直接標出。
+          進場前先<strong>加模擬部位</strong>，跨式、勒式、價差先畫再下。
+        </p>
+        <ul class="feat-list">
+          <li><strong>選擇權 T 字報價</strong> — 全月份快照、ATM 自動定位、點擊連動下單</li>
+          <li><strong>K 線點價下單</strong> — 圖上直接點價買賣、委託線拖曳改價、MA／EMA／布林／VWAP 疊圖</li>
+          <li><strong>帳務全景</strong> — 多帳戶持倉（含零股）、權益數保證金、資產分布圖、一鍵平倉反手</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="desktop" style="background: var(--bg-soft); border-block: 1px solid var(--border);">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="kicker">Desktop Native</p>
+      <h2>真正的桌面公民</h2>
+      <p>免裝 Python、免開終端機 — 安裝完就是一個完整的交易環境</p>
+    </div>
+    <div class="grid rv">
       <div class="card">
-        <div class="ico">🤖</div>
-        <h3>整個專案都是 Agent 做的</h3>
-        <p>UI、SSE 串流、下單鏈路、Tauri 打包、簽章公證、CI 發佈 — 沒有一行人手寫的程式碼。這不是概念展示，是一個真的能交易的終端。</p>
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19h8"/><path d="m4 17 6-6-6-6"/></svg></div>
+        <h3>內建 shioaji server</h3>
+        <p>HTTP API 伺服器以 sidecar 內建，自動啟動、健康監控、斷線重連重訂閱；port 被占用會自己找新家。</p>
       </div>
       <div class="card">
-        <div class="ico">🎛</div>
-        <h3>客製你自己的交易介面</h3>
-        <p>Fork 之後對 agent 開口就好：加一個面板、改閃電下單的行為、接上你的策略訊號 — 不用從零刻 UI，這裡已經把地基打完。</p>
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3>正式環境就緒</h3>
+        <p>介面直接載入 CA 憑證（.pfx 檔案挑選器），模擬／正式一鍵切換 — 預設永遠是安全的模擬環境。</p>
       </div>
       <div class="card">
-        <div class="ico">🔗</div>
-        <h3>為交易 Agent 留好了路</h3>
-        <p>終端目前未內建交易 agent — 但 shioaji server 是純 HTTP API + SSE，行情、下單、部位全部可程式化。打造自己的版本時，把你的交易 agent 串進同一套 API 就能成形（請先在模擬環境驗證）。</p>
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></div>
+        <h3>系統匣常駐面板</h3>
+        <p>Menu bar 一點就有迷你看盤：損益、自選、指數 — 顯示什麼由你自訂，不開主視窗也能盯。</p>
       </div>
       <div class="card">
-        <div class="ico">📡</div>
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M22 8c0-2.3-.8-4.3-2-6"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/><path d="M4 2C2.8 3.7 2 5.7 2 8"/></svg></div>
+        <h3>看得懂的通知</h3>
+        <p>成交、委託、錯誤分色卡片，乾淨格式化不丟原始事件；大小可調、有通知中心可回看、提示音分情境。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></div>
+        <h3>自動更新</h3>
+        <p>GitHub Actions 自動建置簽章，macOS 公證完成；新版本到了 App 自己告訴你，一鍵升級。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg></div>
+        <h3>隱私與外觀</h3>
+        <p>一鍵遮蔽所有金額（旁邊有人也能開盤）；深色／純黑／淺色主題、紅漲綠跌可切、字級四段可調。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="opensource">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="kicker">Open Source</p>
+      <h2>整個專案都是 Agent 做的 — 而且全部開源</h2>
+      <p>UI、SSE 串流、下單鏈路、Tauri 打包、簽章公證、CI 發佈，沒有一行人手寫的程式碼。這不是概念展示，是一個真的能交易的終端</p>
+    </div>
+    <div class="grid rv">
+      <div class="card">
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></svg></div>
+        <h3>客製你自己的版本</h3>
+        <p>Fork 之後對 agent 開口就好：加一個面板、改閃電下單的行為、接上你的策略訊號 — 地基已經打完。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg></div>
         <h3>真實場景參考實作</h3>
-        <p>斷線重連重放訂閱、tick／五檔 store、停損停利觸價引擎、OCO、風控閘道 — 即時交易系統會遇到的坑，原始碼裡都處理給你看。</p>
+        <p>斷線重連重放訂閱、tick／五檔 store、觸價引擎、OCO、風控閘道、agent 工具鏈 — 即時交易系統的坑都處理給你看。</p>
       </div>
       <div class="card">
-        <div class="ico">📚</div>
-        <h3>現代技術棧</h3>
-        <p>React 19 + TypeScript + Vite、vanilla-extract 主題系統、lightweight-charts、Tauri 2 桌面打包與自動更新 — 交易級前端的完整參考。</p>
-      </div>
-      <div class="card">
-        <div class="ico">💡</div>
-        <h3>佛心開源</h3>
-        <p>fork 它、拆它、只抄你需要的那一段都歡迎 — 全部程式碼都是學習素材，搭配 <a href="https://sinotrade.github.io/" target="_blank" rel="noopener">Shioaji 官方文件</a> 一起服用。</p>
+        <div class="ico"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></svg></div>
+        <h3>現代技術棧教材</h3>
+        <p>React 19 + TypeScript + Vite、vanilla-extract、lightweight-charts、Tauri 2 — fork 它、拆它、只抄你要的那段都歡迎。</p>
       </div>
     </div>
-    <div style="max-width: 760px; margin: 40px auto 0; text-align: center;">
+    <div style="max-width: 760px; margin: 40px auto 0; text-align: center;" class="rv">
       <p style="font-size: 0.92rem; color: var(--fg); margin-bottom: 14px; font-weight: 600;">
-        兩行指令，你的 agent 就踏進台股 — 然後開口描述你要的工具：
+        兩行指令，你自己的 coding agent 也能踏進台股 — 然後開口描述你要的工具：
       </p>
       <div class="install-grid">
         <div style="font-family: var(--mono); font-size: 0.78rem; background: var(--bg); border: 1px solid var(--border-bright); border-radius: var(--radius); padding: 14px 18px; line-height: 2; overflow-x: auto;">
@@ -403,13 +592,14 @@
   </div>
 </section>
 
-<section id="quickstart">
+<section id="quickstart" style="background: var(--bg-soft); border-block: 1px solid var(--border);">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="sec-head rv">
+      <p class="kicker">Quickstart</p>
       <h2>三步開始</h2>
-      <p>預設連線模擬環境，安全試用所有功能</p>
+      <p>預設連線模擬環境，安全試用所有功能 — 含 AI Agent</p>
     </div>
-    <div class="steps">
+    <div class="steps rv">
       <div class="step">
         <h3>下載安裝</h3>
         <p>下載對應平台安裝檔。macOS 已完成 Apple 簽章與公證，開啟即用。</p>
@@ -420,7 +610,7 @@
       </div>
       <div class="step">
         <h3>開始交易</h3>
-        <p>內建 shioaji server 自動啟動，預設<strong>模擬環境</strong>。確認流程無誤後可切換正式環境。</p>
+        <p>內建 shioaji server 自動啟動，預設<strong>模擬環境</strong>。想開 AI Agent？設定頁選個 provider 就能對話。</p>
       </div>
     </div>
   </div>
@@ -428,11 +618,11 @@
 
 <section id="downloads">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="sec-head rv">
       <h2>下載 <span id="dl-ver" style="font-family: var(--mono); color: var(--accent); font-size: 1.1rem;"></span></h2>
       <p>所有平台安裝檔，由 GitHub Actions 自動建置並簽章</p>
     </div>
-    <div class="dl-grid">
+    <div class="dl-grid rv">
       <div class="dl-card">
         <h3> macOS</h3>
         <div class="arch">已簽章・已公證</div>
@@ -465,11 +655,13 @@
   </div>
 </section>
 
+<a id="float-dl" href="https://github.com/Sinotrade/shioaji-pro-app/releases/latest">⬇ 下載試玩</a>
+
 <footer>
   <div class="wrap">
     <div class="foot-inner">
       <div>
-        <strong style="color: var(--fg);">Shioaji Pro</strong> — Agent 交易時代的起點・完整開源的交易終端<br />
+        <strong style="color: var(--fg);">Shioaji Pro</strong> — 內建 AI Agent 的開源交易終端<br />
         Powered by <a href="https://github.com/Sinotrade/Shioaji" target="_blank" rel="noopener">Shioaji</a> ・
         <a href="https://sinotrade.github.io/" target="_blank" rel="noopener">API 文件</a> ・
         <a href="https://github.com/Sinotrade/shioaji-pro-app" target="_blank" rel="noopener">原始碼</a> ・
@@ -485,6 +677,8 @@
       不附任何明示或默示之保證，包括但不限於正確性、即時性、穩定性、不中斷、適售性或特定用途之適用性。
       本軟體可能存在錯誤、延遲或非預期行為；下單、改單、刪單、停損停利與任何自動化功能，
       均可能因程式缺陷、網路中斷、行情延遲或第三方服務異常而失效或產生非預期結果。
+      <strong>AI Agent 之分析與操作僅供參考，不構成投資建議；自動下單模式請自行評估風險後啟用，盈虧自負。</strong>
+      Codex 訂閱通道為非官方文件化端點，可能隨 OpenAI 調整而變動。
       使用前請務必於<strong>模擬環境自行充分測試與驗證</strong>，完全理解其行為後再評估是否用於正式環境。
       本軟體不構成任何投資建議、要約或招攬；所有交易決策與其結果 —
       包括任何直接、間接、附帶或衍生之損失 — 均由<strong>使用者自行負責與承擔</strong>。
@@ -504,6 +698,26 @@
       document.getElementById('shot-img').src = btn.dataset.src;
     });
   });
+
+  // reveal on scroll
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('.rv').forEach(function (el) { io.observe(el); });
+  } else {
+    document.querySelectorAll('.rv').forEach(function (el) { el.classList.add('in'); });
+  }
+
+  // floating download CTA after hero scrolls away
+  var floatDl = document.getElementById('float-dl');
+  var hero = document.querySelector('.hero');
+  window.addEventListener('scroll', function () {
+    var past = window.scrollY > hero.offsetTop + hero.offsetHeight;
+    floatDl.classList.toggle('show', past);
+  }, { passive: true });
 
   // resolve latest release assets
   fetch('https://api.github.com/repos/Sinotrade/shioaji-pro-app/releases/latest')
@@ -536,13 +750,16 @@
       var url = null, label = null;
       if (/Macintosh/.test(ua)) {
         url = asset(/aarch64\.dmg$/); label = '下載 macOS 版 (Apple Silicon)';
-        note.textContent = 'Intel Mac 請至下方下載區・已簽章公證・自動更新';
+        note.textContent = 'Intel Mac 請至下方下載區・已簽章公證・自動更新・模擬環境安全試玩';
       } else if (/Windows/.test(ua)) {
         url = asset(/\.msi$/); label = '下載 Windows 版 (.msi)';
       } else if (/Linux/.test(ua)) {
         url = asset(/\.AppImage$/); label = '下載 Linux 版 (.AppImage)';
       }
-      if (url) { cta.href = url; cta.textContent = '⬇ ' + label + ' ' + ver; }
+      if (url) {
+        cta.href = url; cta.textContent = '⬇ ' + label + ' ' + ver;
+        floatDl.href = url;
+      }
     })
     .catch(function () { /* fall back to releases page links */ });
 })();
