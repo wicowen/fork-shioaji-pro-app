@@ -42,6 +42,16 @@
           "args": true
         }
       ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/shioaji",
+          "sidecar": true,
+          "args": true
+        }
+      ]
     }
   ]
 }
