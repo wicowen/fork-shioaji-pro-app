@@ -82,6 +82,21 @@ export const dropTarget = style({
     boxShadow: `inset 0 2px 0 ${vars.color.accent}`,
 });
 
+// sparkline mode: third middle column between code/name and price/change
+export const rowSparkCols = style({
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(48px, 1.1fr) auto',
+});
+
+export const sparkCell = style({
+    gridColumn: 2,
+    gridRow: '1 / span 2',
+    alignSelf: 'center',
+    display: 'flex',
+    alignItems: 'center',
+    minWidth: 0,
+    padding: '0 4px',
+});
+
 export const removeBtn = style({
     gridColumn: '1 / -1',
     display: 'none',

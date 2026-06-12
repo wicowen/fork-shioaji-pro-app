@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { usePoll } from '../hooks/use-poll';
+import { useStreamStatus } from '../hooks/use-stream';
 import { fetchHealth } from '../lib/shioaji';
 import {
     isTauri,
@@ -38,6 +39,7 @@ export function ServerManager({
     const [busy, setBusy] = useState(false);
     const [lastOutput, setLastOutput] = useState('');
 
+    const stream = useStreamStatus();
     const { data: status, refresh } = usePoll<ServerStatus | null>(
         useCallback(() => serverStatus(), []),
         8000,
@@ -129,14 +131,46 @@ export function ServerManager({
     if (!isTauri) return null;
 
     const running = status?.running && status.healthy;
+    // explicit lifecycle so starting/connecting never looks stuck:
+    // busy → 啟動中 (amber breathing); running but stream not live yet →
+    // 連線中 (amber breathing); healthy + live → steady green; else red
+    const phase: 'starting' | 'connecting' | 'ok' | 'down' = busy
+        ? 'starting'
+        : running && stream === 'live'
+          ? 'ok'
+          : status?.running || stream === 'connecting'
+            ? 'connecting'
+            : 'down';
+    const phaseLabel =
+        phase === 'starting'
+            ? '啟動中…'
+            : phase === 'connecting'
+              ? '連線中…'
+              : '伺服器';
 
     return (
         <div className={styles.settingsWrap}>
             <button
                 className={styles.resetBtn}
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                }}
                 onClick={() => onToggle(!open)}
             >
-                {running ? '🟢' : '🔴'} 伺服器
+                <span
+                    className={
+                        styles.led[
+                            phase === 'ok'
+                                ? 'live'
+                                : phase === 'down'
+                                  ? 'down'
+                                  : 'connecting'
+                        ]
+                    }
+                />
+                {phaseLabel}
             </button>
             {open && (
                 <>
@@ -149,13 +183,23 @@ export function ServerManager({
                             Shioaji Server 狀態
                         </span>
                         <span className={styles.emptyHint}>
-                            {status?.running
-                                ? `運行中 · PID ${status.pid} · :${status.port} · ${
-                                      status.simulation
-                                          ? '模擬環境'
-                                          : '⚠ 正式環境'
-                                  } · ${status.healthy ? '健康' : '不健康'}`
-                                : '未運行'}
+                            {phase === 'starting' &&
+                                '⏳ 啟動中 — 登入與載入合約約需 10–30 秒…'}
+                            {phase === 'connecting' &&
+                                status?.running &&
+                                '🔄 已啟動，等待行情連線…'}
+                            {(phase === 'ok' ||
+                                (status?.running && phase !== 'starting')) && (
+                                <>
+                                    {phase === 'connecting' && <br />}
+                                    {`運行中 · PID ${status?.pid} · :${status?.port} · ${
+                                        status?.simulation
+                                            ? '模擬環境'
+                                            : '⚠ 正式環境'
+                                    } · ${status?.healthy ? '健康' : '不健康'}`}
+                                </>
+                            )}
+                            {!status?.running && phase !== 'starting' && '未運行'}
                             {health && (
                                 <>
                                     <br />

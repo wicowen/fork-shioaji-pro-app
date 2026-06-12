@@ -16,6 +16,7 @@ import type { WatchItem } from '../hooks/use-watchlist';
 import type { ScannerItem } from '../lib/types/market';
 import type { Position } from '../lib/types/portfolio';
 import { fmtInt, fmtPct, fmtPrice, fmtSigned } from '../lib/utils/format';
+import { Sparkline } from './sparkline';
 import * as panel from './panel.css';
 import * as styles from './tray-panel.css';
 
@@ -28,6 +29,7 @@ const SECTIONS: { key: SectionKey; label: string }[] = [
 ];
 
 const STORE_KEY = 'sj-pro-tray-sections';
+const SPARK_KEY = 'sj-pro-tray-spark';
 
 function loadSections(): Set<SectionKey> {
     try {
@@ -57,7 +59,7 @@ async function pickCode(code: string) {
     }
 }
 
-function WatchMini({ item }: { item: WatchItem }) {
+function WatchMini({ item, spark }: { item: WatchItem; spark: boolean }) {
     const quote = useQuote(item.contract.code);
     const tick = quote?.tick;
     const close = tick ? Number(tick.close) : item.snapshot?.close;
@@ -69,11 +71,20 @@ function WatchMini({ item }: { item: WatchItem }) {
     const dir = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
     return (
         <button
-            className={styles.row}
+            className={spark ? styles.rowSpark : styles.row}
             onClick={() => void pickCode(item.contract.code)}
         >
             <span className={styles.code}>{item.contract.code}</span>
             <span className={styles.name}>{item.contract.name}</span>
+            {spark && (
+                <Sparkline
+                    contract={item.contract}
+                    last={close}
+                    reference={ref || undefined}
+                    height={18}
+                    stretch
+                />
+            )}
             <span className={`${styles.num} ${panel.dirText[dir]}`}>
                 {fmtPrice(close)}
             </span>
@@ -86,6 +97,9 @@ function WatchMini({ item }: { item: WatchItem }) {
 
 export function TrayPanel() {
     const [sections, setSections] = useState<Set<SectionKey>>(loadSections);
+    const [spark, setSpark] = useState(
+        () => localStorage.getItem(SPARK_KEY) !== '0',
+    );
     const [gearOpen, setGearOpen] = useState(false);
     const { items } = useWatchlist();
 
@@ -189,6 +203,17 @@ export function TrayPanel() {
                             {s.label}
                         </button>
                     ))}
+                    <button
+                        className={styles.gearOpt[spark ? 'on' : 'off']}
+                        onClick={() =>
+                            setSpark((v) => {
+                                localStorage.setItem(SPARK_KEY, v ? '0' : '1');
+                                return !v;
+                            })
+                        }
+                    >
+                        {spark ? '✓ ' : ''}小線圖
+                    </button>
                 </div>
             )}
 
@@ -237,7 +262,11 @@ export function TrayPanel() {
                     <>
                         <span className={styles.sectionTitle}>自選清單</span>
                         {items.slice(0, 10).map((item) => (
-                            <WatchMini key={item.contract.code} item={item} />
+                            <WatchMini
+                                key={item.contract.code}
+                                item={item}
+                                spark={spark}
+                            />
                         ))}
                         {items.length === 0 && (
                             <span className={styles.empty}>清單載入中…</span>

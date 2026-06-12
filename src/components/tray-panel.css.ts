@@ -126,6 +126,14 @@ export const row = style({
     ':hover': { background: vars.color.muted },
 });
 
+// with the sparkline filling the middle gap between name and price
+export const rowSpark = style([
+    row,
+    {
+        gridTemplateColumns: '3.3rem 4.6rem minmax(0,1fr) auto auto',
+    },
+]);
+
 export const code = style({
     fontWeight: 600,
 });

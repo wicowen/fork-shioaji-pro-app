@@ -9,8 +9,11 @@ import type { ServerWatchlist } from '../lib/shioaji';
 import { getQuote } from '../lib/stream';
 import type { ContractInfo } from '../lib/types/contract';
 import { fmtPct, fmtPrice, fmtSigned } from '../lib/utils/format';
+import { Sparkline } from './sparkline';
 import * as panel from './panel.css';
 import * as styles from './watchlist.css';
+
+const SPARK_KEY = 'sj-pro-watchlist-spark';
 
 type SortMode = 'custom' | 'desc' | 'asc';
 
@@ -27,6 +30,7 @@ const WatchRow = memo(function WatchRow({
     item,
     selected,
     dropTarget,
+    spark,
     onSelect,
     onRemove,
     onDragStart,
@@ -36,6 +40,7 @@ const WatchRow = memo(function WatchRow({
     item: WatchItem;
     selected: boolean;
     dropTarget: boolean;
+    spark: boolean;
     onSelect: (c: ContractInfo) => void;
     onRemove: (code: string) => void;
     onDragStart: (code: string) => void;
@@ -71,8 +76,8 @@ const WatchRow = memo(function WatchRow({
     return (
         <div
             className={`${styles.row[selected ? 'selected' : 'normal']} ${
-                dropTarget ? styles.dropTarget : ''
-            }`}
+                spark ? styles.rowSparkCols : ''
+            } ${dropTarget ? styles.dropTarget : ''}`}
             draggable
             onClick={() => onSelect(item.contract)}
             onDragStart={(e) => {
@@ -95,6 +100,17 @@ const WatchRow = memo(function WatchRow({
                 />
             )}
             <span className={styles.code}>{item.contract.code}</span>
+            {spark && (
+                <span className={styles.sparkCell}>
+                    <Sparkline
+                        contract={item.contract}
+                        last={close}
+                        reference={ref || undefined}
+                        height={26}
+                        stretch
+                    />
+                </span>
+            )}
             <span className={`${styles.price} ${panel.dirText[dir]}`}>
                 {fmtPrice(close)}
             </span>
@@ -153,6 +169,10 @@ export function Watchlist({
     // dragover, before React commits the state update
     const dropCodeRef = useRef<string | null>(null);
     const [dropCode, setDropCode] = useState<string | null>(null);
+    // mini intraday sparklines per row — user-toggleable, persisted
+    const [spark, setSpark] = useState(
+        () => localStorage.getItem(SPARK_KEY) === '1',
+    );
     // sort by live percent change (issue #1) — re-sorts every 10s while on
     const [sortMode, setSortMode] = useState<SortMode>('custom');
     const [sortTick, setSortTick] = useState(0);
@@ -275,6 +295,23 @@ export function Watchlist({
                                   : '↑%'}
                         </button>
                         <button
+                            className={`${styles.listBtn} ${
+                                spark ? styles.listBtnOn : ''
+                            }`}
+                            title={spark ? '關閉小線圖' : '顯示小線圖'}
+                            onClick={() =>
+                                setSpark((v) => {
+                                    localStorage.setItem(
+                                        SPARK_KEY,
+                                        v ? '0' : '1',
+                                    );
+                                    return !v;
+                                })
+                            }
+                        >
+                            📈
+                        </button>
+                        <button
                             className={styles.listBtn}
                             title='建立新清單'
                             onClick={() => setCreating(true)}
@@ -323,6 +360,7 @@ export function Watchlist({
                             key={item.contract.code}
                             item={item}
                             selected={item.contract.code === selectedCode}
+                            spark={spark}
                             dropTarget={
                                 sortMode === 'custom' &&
                                 item.contract.code === dropCode
