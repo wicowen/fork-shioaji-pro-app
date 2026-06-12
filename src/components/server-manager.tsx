@@ -1,11 +1,24 @@
 // src/components/server-manager.tsx — desktop-only shioaji server控制台:
 // status, start/stop/restart, API-key settings, simulation/production mode.
 
-import { Clipboard, Play, RefreshCw, RotateCcw, Square, X } from 'lucide-react';
+import {
+    Clipboard,
+    Play,
+    RefreshCw,
+    RotateCcw,
+    ShieldCheck,
+    Square,
+    X,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { usePoll } from '../hooks/use-poll';
 import { useStreamStatus } from '../hooks/use-stream';
-import { fetchHealth } from '../lib/shioaji';
+import {
+    fetchAccounts,
+    fetchCaExpire,
+    fetchHealth,
+    fetchInfo,
+} from '../lib/shioaji';
 import {
     appVersion,
     isTauri,
@@ -72,6 +85,57 @@ export function ServerManager({
     const [busy, setBusy] = useState(false);
     const [lastOutput, setLastOutput] = useState('');
     const [ver, setVer] = useState('');
+    const [checking, setChecking] = useState(false);
+    const [readyLines, setReadyLines] = useState<string[]>([]);
+
+    // diagnose why production orders 400: which accounts are signed + CA
+    // validity (issue #1 support — "加了 CA 還是 400")
+    const runReadyCheck = async () => {
+        setChecking(true);
+        setReadyLines([]);
+        const out: string[] = [];
+        try {
+            const info = await fetchInfo().catch(() => null);
+            out.push(
+                info?.simulation
+                    ? '環境：模擬（下單不需 CA）'
+                    : '環境：⚠ 正式（下單需 CA＋已簽署帳戶）',
+            );
+            const accounts = await fetchAccounts();
+            for (const a of accounts) {
+                const kind =
+                    a.account_type === 'S'
+                        ? '證券'
+                        : a.account_type === 'F'
+                          ? '期貨'
+                          : a.account_type;
+                out.push(
+                    `${a.signed ? '✓' : '✗'} ${kind} ${a.broker_id}-${a.account_id}` +
+                        `${a.signed ? ' 已簽署' : ' 未簽署 API 約定書（無法下單）'}`,
+                );
+            }
+            const pid = accounts[0]?.person_id;
+            if (pid && info && !info.simulation) {
+                try {
+                    const ca = await fetchCaExpire(pid);
+                    const exp = new Date(ca.expire_time);
+                    const ok = exp.getTime() > Date.now();
+                    out.push(
+                        `${ok ? '✓' : '✗'} CA 憑證${ok ? '有效' : '已過期'}，到期 ${ca.expire_time.slice(0, 10)}`,
+                    );
+                } catch (e) {
+                    out.push(
+                        `✗ CA 未啟用或查詢失敗：${e instanceof Error ? e.message : String(e)}`,
+                    );
+                }
+            }
+            out.push('— 下單若仍 400，請把以上內容回報 —');
+        } catch (e) {
+            out.push(`✗ 檢查失敗：${e instanceof Error ? e.message : String(e)}`);
+        }
+        setReadyLines(out);
+        setChecking(false);
+    };
 
     useEffect(() => {
         appVersion().then(setVer);
@@ -453,6 +517,38 @@ export function ServerManager({
                                 尚未設定憑證 — 正式環境無法下單。請至
                                 sinotrade.com.tw API 管理頁下載 Sinopac.pfx
                             </span>
+                        )}
+
+                        <button
+                            className={styles.updateBtn}
+                            onClick={runReadyCheck}
+                            disabled={checking}
+                        >
+                            <ShieldCheck size={13} />
+                            {checking ? '檢查中…' : '下單就緒檢查（CA／帳戶）'}
+                        </button>
+                        {readyLines.length > 0 && (
+                            <div
+                                className={styles.emptyHint}
+                                style={{
+                                    fontFamily: 'var(--font-mono, monospace)',
+                                    lineHeight: 1.6,
+                                    whiteSpace: 'pre-wrap',
+                                }}
+                            >
+                                {readyLines.map((l, i) => (
+                                    <div
+                                        key={i}
+                                        style={
+                                            l.startsWith('✗') || l.startsWith('⚠')
+                                                ? { color: 'var(--danger, #f23645)' }
+                                                : undefined
+                                        }
+                                    >
+                                        {l}
+                                    </div>
+                                ))}
+                            </div>
                         )}
 
                         <button

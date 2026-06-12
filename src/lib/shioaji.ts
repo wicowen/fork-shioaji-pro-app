@@ -63,6 +63,14 @@ export function fetchAccounts() {
     return apiGet<Account[]>('/api/v1/auth/accounts');
 }
 
+// CA expiry for a person_id — production orders fail (400) without an active,
+// unexpired CA. Returns the expire time so the panel can show 有效/過期.
+export function fetchCaExpire(personId: string) {
+    return apiGet<{ person_id: string; expire_time: string }>(
+        `/api/v1/auth/ca_expiretime?person_id=${encodeURIComponent(personId)}`,
+    );
+}
+
 export function subscribeTradeEvents(account: {
     broker_id: string;
     account_id: string;
