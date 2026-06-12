@@ -118,3 +118,36 @@ export const scValue = style({
     textAlign: 'right',
     fontWeight: 600,
 });
+
+// 複選 threshold inputs
+export const filterRow = style({
+    display: 'flex',
+    gap: vars.space.sm,
+    padding: `3px ${vars.space.sm}`,
+    borderBottom: `1px solid ${vars.color.border}`,
+    flexShrink: 0,
+});
+
+export const filterItem = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '0.62rem',
+    color: vars.color.mutedForeground,
+    flex: 1,
+});
+
+export const filterInput = style({
+    width: '100%',
+    minWidth: 0,
+    fontFamily: vars.font.mono,
+    fontSize: '0.68rem',
+    textAlign: 'right',
+    color: vars.color.foreground,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '1px 4px',
+    outline: 'none',
+    ':focus': { borderColor: vars.color.accent },
+});

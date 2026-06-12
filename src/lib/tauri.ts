@@ -254,6 +254,47 @@ export async function openPopout(type: string, code: string | null) {
     });
 }
 
+// 閃電全開: pop a flash-order window for each code, tiled to fill the
+// screen (3 columns). Desktop uses real windows; browser falls back to
+// window.open with positioned features.
+export async function openFlashTiles(codes: string[]) {
+    if (codes.length === 0) return;
+    const cols = codes.length <= 4 ? 2 : 3;
+    const rows = Math.ceil(codes.length / cols);
+    const availW = window.screen.availWidth;
+    const availH = window.screen.availHeight;
+    const w = Math.floor(availW / cols);
+    const h = Math.floor(availH / rows);
+    if (!isTauri) {
+        codes.forEach((code, i) => {
+            const x = (i % cols) * w;
+            const y = Math.floor(i / cols) * h;
+            const qs = new URLSearchParams({ popout: 'flash', code });
+            window.open(
+                `${window.location.pathname}?${qs}`,
+                `sj-flash-tile-${code}`,
+                `left=${x},top=${y},width=${w},height=${h},menubar=no,toolbar=no`,
+            );
+        });
+        return;
+    }
+    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+    codes.forEach((code, i) => {
+        const qs = new URLSearchParams({ popout: 'flash', code });
+        popoutCounter += 1;
+        new WebviewWindow(`popout-flashtile-${popoutCounter}`, {
+            url: `index.html?${qs}`,
+            title: `⚡ ${code}`,
+            x: (i % cols) * w,
+            y: Math.floor(i / cols) * h,
+            width: w,
+            height: h,
+            minWidth: 320,
+            minHeight: 300,
+        });
+    });
+}
+
 // ---- auto-update ----
 
 let updateInFlight = false;

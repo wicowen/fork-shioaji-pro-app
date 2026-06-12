@@ -3,7 +3,7 @@
 // buying the combo lifts the Buy legs' asks and hits the Sell legs' bids,
 // so 合成買價 = Σ(±bid/ask) accordingly. Working combos listed with cancel.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuote } from '../hooks/use-stream';
 import { usePoll } from '../hooks/use-poll';
 import { ensureContract } from '../lib/contracts-cache';
@@ -102,6 +102,16 @@ export function ComboTicket() {
         10000,
     );
 
+    // 到價監控 (issue #2): combos only fill IOC, so watch the synthetic
+    // book and fire when it crosses the target — bounded attempts +
+    // cooldown so a flickering quote can't machine-gun orders
+    const [watchOn, setWatchOn] = useState(false);
+    const [watchPrice, setWatchPrice] = useState('');
+    const [attempts, setAttempts] = useState(0);
+    const watchRef = useRef({ lastFire: 0, firing: false });
+    const MAX_ATTEMPTS = 3;
+    const COOLDOWN_MS = 5000;
+
     const setLeg = (i: number, patch: Partial<LegState>) =>
         setLegs((prev) =>
             prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)),
@@ -135,6 +145,72 @@ export function ComboTicket() {
     }, [synth, priceTouched]);
 
     const ready = legs.every((l) => l.contract);
+
+    // watcher: buy when the synthetic ASK drops to target; sell when the
+    // synthetic BID rises to target
+    useEffect(() => {
+        if (!watchOn || !synth || !ready) return;
+        const target = Number(watchPrice);
+        if (!Number.isFinite(target)) return;
+        const hit =
+            action === 'Buy' ? synth.ask <= target : synth.bid >= target;
+        if (!hit) return;
+        const w = watchRef.current;
+        if (w.firing || Date.now() - w.lastFire < COOLDOWN_MS) return;
+        if (attempts >= MAX_ATTEMPTS) {
+            setWatchOn(false);
+            notify({
+                kind: 'info',
+                title: '🎯 到價監控停止',
+                body: `已達 ${MAX_ATTEMPTS} 次嘗試上限，請確認成交狀況`,
+            });
+            return;
+        }
+        w.firing = true;
+        w.lastFire = Date.now();
+        setAttempts((a) => a + 1);
+        (async () => {
+            try {
+                const legReqs: ComboLeg[] = legs.map((l) => ({
+                    action: l.action,
+                    security_type: l.contract!.security_type,
+                    exchange: l.contract!.exchange,
+                    code: l.contract!.code,
+                    target_code: l.contract!.target_code ?? null,
+                }));
+                const trade = await placeComboOrder(legReqs, {
+                    action,
+                    price: target,
+                    quantity: qty,
+                    price_type: 'LMT',
+                    order_type: 'IOC',
+                    octype: 'Auto',
+                });
+                notify({
+                    kind: 'ok',
+                    title: `🎯 到價觸發第 ${attempts + 1} 次`,
+                    body: `組合 ${action === 'Buy' ? '買' : '賣'} ${qty} @ ${target}（${trade.status.status}）— 請確認成交，避免重複下單`,
+                });
+                tradesPoll.refresh();
+            } catch (e) {
+                notify({
+                    kind: 'err',
+                    title: '到價下單失敗',
+                    body: e instanceof Error ? e.message : String(e),
+                });
+            } finally {
+                watchRef.current.firing = false;
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [synth, watchOn, watchPrice, action, qty, ready, attempts]);
+
+    // disarm the watcher when legs change
+    useEffect(() => {
+        setWatchOn(false);
+        setAttempts(0);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [legs.map((l) => `${l.action}${l.contract?.code}`).join('|')]);
 
     const execute = async () => {
         if (!armed) {
@@ -300,6 +376,36 @@ export function ComboTicket() {
                         ? `${action === 'Buy' ? '買進' : '賣出'}組合下單`
                         : '先輸入兩腳合約代碼'}
             </button>
+
+            <div className={styles.fieldRow}>
+                <span className={styles.fieldLabel}>到價</span>
+                <input
+                    className={styles.numInput}
+                    placeholder='目標淨價'
+                    value={watchPrice}
+                    inputMode='decimal'
+                    disabled={watchOn}
+                    onChange={(e) => setWatchPrice(e.target.value)}
+                />
+                <button
+                    className={styles.seg[watchOn ? 'on' : 'off']}
+                    disabled={!ready || !watchPrice}
+                    title={`合成${action === 'Buy' ? '賣價跌至' : '買價漲至'}目標時自動送 IOC（最多 ${MAX_ATTEMPTS} 次，間隔 ${COOLDOWN_MS / 1000}s）`}
+                    onClick={() => {
+                        setAttempts(0);
+                        setWatchOn((v) => !v);
+                    }}
+                >
+                    {watchOn ? `🎯 監控中 ${attempts}/${MAX_ATTEMPTS}` : '啟動監控'}
+                </button>
+            </div>
+            {watchOn && (
+                <span className={styles.costRow}>
+                    <span className={panel.dirText.up}>
+                        ⚠ 到價會自動送單：IOC 可能部分成交後再次觸發，請盯緊成交回報避免重複部位
+                    </span>
+                </span>
+            )}
 
             {working.length > 0 && (
                 <>

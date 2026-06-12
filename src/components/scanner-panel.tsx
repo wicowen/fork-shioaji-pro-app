@@ -14,7 +14,46 @@ const MODES: { key: string; type: ScannerType; label: string; ascending: boolean
     { key: 'loss', type: 'ChangePercentRank', label: '跌幅', ascending: false },
     { key: 'vol', type: 'VolumeRank', label: '量', ascending: true },
     { key: 'amt', type: 'AmountRank', label: '額', ascending: true },
+    { key: 'multi', type: 'ChangePercentRank', label: '複選', ascending: true },
 ];
+
+// 複選 (issue #2): union three deep ranks, then intersect by thresholds —
+// the top names are often untradeable, crossing conditions finds the rest
+async function fetchMulti(
+    minPct: number,
+    minVolK: number,
+    minAmtB: number,
+): Promise<ScannerItem[]> {
+    const [pct, vol, amt] = await Promise.allSettled([
+        fetchScanner('ChangePercentRank', 100, true),
+        fetchScanner('VolumeRank', 100, true),
+        fetchScanner('AmountRank', 100, true),
+    ]);
+    const byCode = new Map<string, ScannerItem>();
+    for (const r of [pct, vol, amt]) {
+        if (r.status !== 'fulfilled') continue;
+        for (const it of r.value) {
+            if (!byCode.has(it.code)) byCode.set(it.code, it);
+        }
+    }
+    const out = [...byCode.values()].filter((it) => {
+        const ref = it.close - it.change_price;
+        const pctV = it.change_price && ref > 0 ? (it.change_price / ref) * 100 : 0;
+        return (
+            pctV >= minPct &&
+            it.total_volume >= minVolK * 1000 &&
+            it.total_amount >= minAmtB * 1e8
+        );
+    });
+    out.sort((a, b) => {
+        const refA = a.close - a.change_price;
+        const refB = b.close - b.change_price;
+        const pa = refA > 0 ? a.change_price / refA : 0;
+        const pb = refB > 0 ? b.change_price / refB : 0;
+        return pb - pa;
+    });
+    return out.slice(0, 30);
+}
 
 const MODE_KEY = 'sj-pro-scanner-mode';
 const REFRESH_MS = 15000;
@@ -37,13 +76,26 @@ export function ScannerPanel({
     const [error, setError] = useState(false);
     const [reloadSeq, setReloadSeq] = useState(0);
     const [picked, setPicked] = useState<string | null>(null);
+    // 複選 thresholds (persisted)
+    const [minPct, setMinPct] = useState(
+        () => Number(localStorage.getItem('sj-scan-minpct')) || 2,
+    );
+    const [minVolK, setMinVolK] = useState(
+        () => Number(localStorage.getItem('sj-scan-minvol')) || 5,
+    );
+    const [minAmtB, setMinAmtB] = useState(
+        () => Number(localStorage.getItem('sj-scan-minamt')) || 1,
+    );
     const mode = MODES.find((m) => m.key === modeKey) ?? MODES[0]!;
 
     useEffect(() => {
         let cancelled = false;
         setError(false);
         const load = () =>
-            fetchScanner(mode.type, 20, mode.ascending)
+            (mode.key === 'multi'
+                ? fetchMulti(minPct, minVolK, minAmtB)
+                : fetchScanner(mode.type, 20, mode.ascending)
+            )
                 .then((d) => {
                     if (cancelled) return;
                     setItems(d);
@@ -56,7 +108,7 @@ export function ScannerPanel({
             cancelled = true;
             clearInterval(t);
         };
-    }, [mode, reloadSeq]);
+    }, [mode, reloadSeq, minPct, minVolK, minAmtB]);
 
     return (
         <>
@@ -74,6 +126,33 @@ export function ScannerPanel({
                     </button>
                 ))}
             </div>
+            {mode.key === 'multi' && (
+                <div className={styles.filterRow}>
+                    {(
+                        [
+                            ['漲幅≥%', minPct, setMinPct, 'sj-scan-minpct'],
+                            ['量≥千張', minVolK, setMinVolK, 'sj-scan-minvol'],
+                            ['額≥億', minAmtB, setMinAmtB, 'sj-scan-minamt'],
+                        ] as [string, number, (v: number) => void, string][]
+                    ).map(([label, value, set, key]) => (
+                        <label key={key} className={styles.filterItem}>
+                            {label}
+                            <input
+                                className={styles.filterInput}
+                                value={value}
+                                inputMode='decimal'
+                                onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (Number.isFinite(v) && v >= 0) {
+                                        set(v);
+                                        localStorage.setItem(key, String(v));
+                                    }
+                                }}
+                            />
+                        </label>
+                    ))}
+                </div>
+            )}
             <div className={panel.panelBody}>
                 {error && (
                     <div className={styles.errorBox}>

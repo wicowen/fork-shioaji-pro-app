@@ -31,6 +31,7 @@ export interface StockOrderReq {
     order_type: OrderType;
     order_lot?: StockOrderLot;
     daytrade_short?: boolean;
+    custom_field?: string; // tag for app-managed orders (e.g. grid)
 }
 
 export interface FuturesOrderReq {
@@ -40,6 +41,7 @@ export interface FuturesOrderReq {
     price_type: FuturesPriceType;
     order_type: OrderType;
     octype?: FuturesOCType;
+    custom_field?: string;
 }
 
 export interface Deal {

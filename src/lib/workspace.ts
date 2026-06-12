@@ -19,7 +19,11 @@ export type BlockType =
     | 'depthmap'
     | 'combo'
     | 'notices'
-    | 'debug';
+    | 'debug'
+    | 'grid'
+    | 'heatmap'
+    | 'optpnl'
+    | 'assistant';
 
 export interface Block {
     id: string;
@@ -148,6 +152,30 @@ export const BLOCK_META: Record<
         pinnable: false,
         singleton: true,
         defaultSize: { w: 6, h: 11, minW: 4, minH: 7 },
+    },
+    grid: {
+        label: '鋪單',
+        pinnable: true,
+        singleton: false,
+        defaultSize: { w: 5, h: 13, minW: 4, minH: 10 },
+    },
+    heatmap: {
+        label: '類股熱力圖',
+        pinnable: false,
+        singleton: true,
+        defaultSize: { w: 8, h: 11, minW: 5, minH: 6 },
+    },
+    optpnl: {
+        label: '選擇權損益圖',
+        pinnable: false,
+        singleton: true,
+        defaultSize: { w: 8, h: 13, minW: 6, minH: 9 },
+    },
+    assistant: {
+        label: 'AI 助理',
+        pinnable: false,
+        singleton: true,
+        defaultSize: { w: 7, h: 14, minW: 5, minH: 9 },
     },
 };
 

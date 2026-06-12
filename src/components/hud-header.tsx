@@ -29,7 +29,11 @@ import {
     type Convention,
     type ThemeMode,
 } from '../lib/theme-store';
-import { checkForUpdates, listenTrayEvents } from '../lib/tauri';
+import {
+    checkForUpdates,
+    listenTrayEvents,
+    openFlashTiles,
+} from '../lib/tauri';
 import { fmtMoney } from '../lib/utils/format';
 import { LAYOUT_PRESETS, type BlockType } from '../lib/workspace';
 import { MarketBar } from './market-bar';
@@ -479,10 +483,12 @@ export function HudHeader({
     onDeleteProfile,
     onResetWorkspace,
     onLoadPreset,
+    flashCodes = [],
 }: {
     accBalance?: number;
     addableTypes: { type: BlockType; label: string; disabled: boolean }[];
     onAddBlock: (type: BlockType) => void;
+    flashCodes?: string[];
     profiles: string[];
     onSaveProfile: (name: string) => void;
     onLoadProfile: (name: string) => void;
@@ -562,6 +568,15 @@ export function HudHeader({
                 addableTypes={addableTypes}
                 onAddBlock={onAddBlock}
             />
+            {flashCodes.length > 0 && (
+                <button
+                    className={styles.resetBtn}
+                    title={`一鍵外開自選前 ${Math.min(9, flashCodes.length)} 檔的閃電下單，平鋪滿螢幕`}
+                    onClick={() => void openFlashTiles(flashCodes.slice(0, 9))}
+                >
+                    ⚡ 全開
+                </button>
+            )}
             <ProfilesMenu
                 profiles={profiles}
                 onSaveProfile={onSaveProfile}

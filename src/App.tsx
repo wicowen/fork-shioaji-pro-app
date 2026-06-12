@@ -22,7 +22,11 @@ import { OrderTicket } from './components/order-ticket';
 import { ChipsCard } from './components/chips-card';
 import { ComboTicket } from './components/combo-ticket';
 import { DebugPanel } from './components/debug-panel';
+import { GridTicket } from './components/grid-ticket';
 import { NoticeCenter } from './components/notice-center';
+import { AssistantPanel } from './components/assistant-panel';
+import { OptPayoff } from './components/opt-payoff';
+import { SectorHeatmap } from './components/sector-heatmap';
 import { PnlPanel } from './components/pnl-panel';
 import { VolProfile } from './components/vol-profile';
 import { ReplayPanel } from './components/replay-panel';
@@ -194,6 +198,22 @@ function BlockBody({
             return <NoticeCenter />;
         case 'debug':
             return <DebugPanel />;
+        case 'grid':
+            return contract ? (
+                <GridTicket
+                    contract={contract}
+                    trades={dockProps.trades}
+                    onOrdersChanged={dockProps.onTradesChanged}
+                />
+            ) : (
+                <BlockPlaceholder />
+            );
+        case 'heatmap':
+            return <SectorHeatmap onPick={onSelectCode} />;
+        case 'optpnl':
+            return <OptPayoff positions={dockProps.positions} />;
+        case 'assistant':
+            return <AssistantPanel />;
         case 'replay':
             return contract ? (
                 <ReplayPanel contract={contract} />
@@ -709,6 +729,9 @@ export default function App() {
                 onDeleteProfile={deleteProfile}
                 onResetWorkspace={resetWorkspace}
                 onLoadPreset={loadPreset}
+                flashCodes={items
+                    .filter((i) => i.contract.security_type !== 'IND')
+                    .map((i) => i.contract.code)}
             />
             <EventToasts onEvent={refreshTrading} />
             <CommandPalette
