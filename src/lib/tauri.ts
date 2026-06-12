@@ -76,6 +76,32 @@ async function probeShioaji(port: number): Promise<boolean> {
     }
 }
 
+// is CA active on this daemon? production orders 400 without it. We only
+// attach to / keep a daemon for production if its CA is live — otherwise the
+// user sets CA in the app but the running daemon never had it (issue #1).
+async function caActive(port: number): Promise<boolean> {
+    try {
+        const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+        const accRes = await tauriFetch(
+            `http://127.0.0.1:${port}/api/v1/auth/accounts`,
+            { signal: AbortSignal.timeout(2000) },
+        );
+        if (!accRes.ok) return false;
+        const accts = (await accRes.json()) as { person_id?: string }[];
+        const pid = accts[0]?.person_id;
+        if (!pid) return false;
+        const caRes = await tauriFetch(
+            `http://127.0.0.1:${port}/api/v1/auth/ca_expiretime?person_id=${encodeURIComponent(pid)}`,
+            { signal: AbortSignal.timeout(2000) },
+        );
+        if (!caRes.ok) return false; // 400 "CA not activated"
+        const ca = (await caRes.json()) as { expire_time?: string };
+        return !!ca.expire_time && new Date(ca.expire_time).getTime() > Date.now();
+    } catch {
+        return false;
+    }
+}
+
 export interface StartResult extends SidecarResult {
     port: number;
     attached: boolean; // an existing shioaji server was reused
@@ -89,14 +115,19 @@ export async function serverStart(opts: {
     caPath?: string;
     caPasswd?: string;
 }): Promise<StartResult> {
+    // when production+CA is requested, a daemon is only good enough to reuse
+    // if its CA is actually active — otherwise orders 400 (issue #1)
+    const needsCa = !!opts.production && !!opts.caPath;
+
     // our own daemon already running (possibly on a non-default port)?
     const st = await serverStatus();
     if (st?.running && st.port) {
         const modeMismatch =
             st.simulation !== undefined &&
             st.simulation === opts.production;
-        if (st.healthy && !modeMismatch) {
-            // healthy and in the requested mode — just use it
+        const caOk = !needsCa || (await caActive(st.port));
+        if (st.healthy && !modeMismatch && caOk) {
+            // healthy, right mode, CA live (if needed) — just use it
             return {
                 ok: true,
                 output: `伺服器已在運行（port ${st.port}）`,
@@ -105,23 +136,36 @@ export async function serverStart(opts: {
                 portChanged: setApiPort(st.port),
             };
         }
-        // unhealthy (e.g. production login failed without CA) or running
-        // in the wrong mode — restart it with the requested settings
-        // instead of attaching to a broken daemon (the v0.1.13 stuck-at-
-        // 連線中 bug)
+        // unhealthy, wrong mode, or CA not active — restart with the
+        // requested settings instead of attaching to a daemon that can't
+        // place orders (v0.1.13 stuck-at-連線中 + the CA-less attach bug)
         await sidecar(['server', 'stop']);
         await new Promise((r) => setTimeout(r, 1200));
     }
 
     // a shioaji server already on 8080 (e.g. the user's own CLI daemon)?
-    // attach to it instead of fighting over the port
+    // attach only if it can actually trade in the requested mode — a CA-less
+    // daemon here is exactly why "加了 CA 還是 400" on the installed app
     if (await probeShioaji(8080)) {
+        if (!needsCa || (await caActive(8080))) {
+            return {
+                ok: true,
+                output: '偵測到既有 shioaji server（:8080），直接連接',
+                port: 8080,
+                attached: true,
+                portChanged: setApiPort(8080),
+            };
+        }
+        // external daemon on 8080 without active CA — we can't restart it
+        // (not ours); tell the user instead of silently 400-ing every order
         return {
-            ok: true,
-            output: '偵測到既有 shioaji server（:8080），直接連接',
+            ok: false,
+            output:
+                ':8080 已有一個 shioaji server，但它的 CA 未啟用，正式環境無法下單。' +
+                '請先停掉那個伺服器（如自行用 CLI 啟動的），再用本 App 啟動以套用憑證。',
             port: 8080,
-            attached: true,
-            portChanged: setApiPort(8080),
+            attached: false,
+            portChanged: false,
         };
     }
 
