@@ -42,7 +42,11 @@ async function run() {
             const settings = await loadDesktopSettings();
             if (settings.autoStart && settings.apiKey && settings.secretKey) {
                 const status = await serverStatus();
-                if (status?.running) {
+                const healthyMatch =
+                    status?.running &&
+                    status.healthy &&
+                    status.simulation === !settings.production;
+                if (healthyMatch) {
                     // daemon survived from a previous run (possibly on a
                     // non-default port) — make sure the API base follows it
                     if (status.port && setApiPort(status.port)) {
@@ -50,11 +54,21 @@ async function run() {
                         return;
                     }
                 } else {
-                    notify({
-                        kind: 'info',
-                        title: '🚀 自動啟動 shioaji server…',
-                        body: `模式：${settings.production ? '⚠ 正式環境' : '模擬環境'}`,
-                    });
+                    // not running, unhealthy, or wrong mode — serverStart
+                    // stops a broken daemon and starts fresh
+                    if (status?.running) {
+                        notify({
+                            kind: 'info',
+                            title: '♻️ 伺服器狀態異常，自動重啟…',
+                            body: `模式：${settings.production ? '⚠ 正式環境' : '模擬環境'}`,
+                        });
+                    } else {
+                        notify({
+                            kind: 'info',
+                            title: '🚀 自動啟動 shioaji server…',
+                            body: `模式：${settings.production ? '⚠ 正式環境' : '模擬環境'}`,
+                        });
+                    }
                     const res = await serverStart(settings);
                     if (!res.ok) {
                         notify({

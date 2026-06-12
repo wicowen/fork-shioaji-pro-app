@@ -59,6 +59,26 @@ export function ServerManager({
         void saveDesktopSettings(merged);
     };
 
+    // after a (re)start the upstream subscriptions are gone — reload the UI
+    // once the server reports healthy so every panel bootstraps cleanly
+    // (issue #2: charts/watchlist froze after restart until manual reload)
+    const reloadWhenHealthy = () => {
+        const deadline = Date.now() + 90_000;
+        const t = setInterval(async () => {
+            if (Date.now() > deadline) {
+                clearInterval(t);
+                return;
+            }
+            try {
+                await fetchHealth();
+                clearInterval(t);
+                window.location.reload();
+            } catch {
+                // not up yet
+            }
+        }, 2000);
+    };
+
     const doStart = async () => {
         if (!settings.apiKey || !settings.secretKey) {
             notify({
@@ -91,9 +111,13 @@ export function ServerManager({
                     ? `port ${res.port} · 模式：${settings.production ? '⚠ 正式環境' : '模擬環境'}`
                     : res.output.slice(0, 120),
             });
-            if (res.ok && res.portChanged) {
-                // API base moved — reload the UI onto the new port
-                setTimeout(() => window.location.reload(), 1800);
+            if (res.ok) {
+                // reload once healthy (or immediately when the port moved)
+                if (res.portChanged) {
+                    setTimeout(() => window.location.reload(), 1800);
+                } else if (!res.attached) {
+                    reloadWhenHealthy();
+                }
             }
         } finally {
             setBusy(false);
@@ -201,6 +225,30 @@ export function ServerManager({
                             (phase === 'connecting' && status?.running)) && (
                             <span className={styles.progressTrack}>
                                 <span className={styles.progressGlider} />
+                            </span>
+                        )}
+                        {status?.running &&
+                            status.simulation === settings.production && (
+                                <span
+                                    className={styles.emptyHint}
+                                    style={{
+                                        color: 'var(--danger, #f23645)',
+                                    }}
+                                >
+                                    ⚠ 伺服器目前為
+                                    {status.simulation ? '模擬' : '正式'}
+                                    環境，與設定（
+                                    {settings.production ? '正式' : '模擬'}
+                                    ）不符 — 按「重啟」套用
+                                </span>
+                            )}
+                        {status?.running && status.healthy === false && (
+                            <span
+                                className={styles.emptyHint}
+                                style={{ color: 'var(--danger, #f23645)' }}
+                            >
+                                ⚠ 伺服器不健康：正式環境需要憑證與已簽署的
+                                API 金鑰；或切回模擬後按「重啟」
                             </span>
                         )}
                         {health && (

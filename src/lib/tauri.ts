@@ -90,16 +90,27 @@ export async function serverStart(opts: {
     caPasswd?: string;
 }): Promise<StartResult> {
     // our own daemon already running (possibly on a non-default port)?
-    // sync to it — `server start` would be a no-op anyway
     const st = await serverStatus();
     if (st?.running && st.port) {
-        return {
-            ok: true,
-            output: `伺服器已在運行（port ${st.port}）`,
-            port: st.port,
-            attached: true,
-            portChanged: setApiPort(st.port),
-        };
+        const modeMismatch =
+            st.simulation !== undefined &&
+            st.simulation === opts.production;
+        if (st.healthy && !modeMismatch) {
+            // healthy and in the requested mode — just use it
+            return {
+                ok: true,
+                output: `伺服器已在運行（port ${st.port}）`,
+                port: st.port,
+                attached: true,
+                portChanged: setApiPort(st.port),
+            };
+        }
+        // unhealthy (e.g. production login failed without CA) or running
+        // in the wrong mode — restart it with the requested settings
+        // instead of attaching to a broken daemon (the v0.1.13 stuck-at-
+        // 連線中 bug)
+        await sidecar(['server', 'stop']);
+        await new Promise((r) => setTimeout(r, 1200));
     }
 
     // a shioaji server already on 8080 (e.g. the user's own CLI daemon)?

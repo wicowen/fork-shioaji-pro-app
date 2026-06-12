@@ -1,7 +1,9 @@
 // src/lib/theme-store.ts — theme settings (mode + price-color convention),
-// persisted to localStorage and applied as a class on <html>.
+// persisted to localStorage and applied as a class on <html>. On desktop
+// the native window chrome (titlebar appearance) follows the mode too.
 
 import { useSyncExternalStore } from 'react';
+import { isTauri } from './runtime';
 import { themeClasses } from '../theme.css';
 
 export type ThemeMode = 'dark' | 'midnight' | 'light';
@@ -45,16 +47,34 @@ function applyClass() {
     const key = `${settings.mode}-${settings.convention}`;
     const cls = themeClasses[key] ?? themeClasses['dark-tw'];
     if (cls) root.classList.add(cls);
+    // light/dark <select>/scrollbar rendering follows this hint too
+    root.style.colorScheme = settings.mode === 'light' ? 'light' : 'dark';
+}
+
+// sync the native window chrome (macOS appearance / Windows titlebar)
+// with the in-app theme — dark/midnight → dark, light → light
+async function applyNativeTheme() {
+    if (!isTauri) return;
+    try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().setTheme(
+            settings.mode === 'light' ? 'light' : 'dark',
+        );
+    } catch {
+        // older runtime without set-theme permission
+    }
 }
 
 export function initTheme() {
     applyClass();
+    void applyNativeTheme();
 }
 
 export function setThemeSettings(next: Partial<ThemeSettings>) {
     settings = { ...settings, ...next };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     applyClass();
+    void applyNativeTheme();
     listeners.forEach((l) => l());
 }
 
