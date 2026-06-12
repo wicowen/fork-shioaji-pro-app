@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePoll } from '../hooks/use-poll';
 import { useQuote } from '../hooks/use-stream';
 import { useWatchlist } from '../hooks/use-watchlist';
+import { maskMoney, usePrivacyMoney } from '../lib/privacy';
 import { isTauri } from '../lib/runtime';
 import {
     fetchPositions,
@@ -101,6 +102,7 @@ export function TrayPanel() {
         () => localStorage.getItem(SPARK_KEY) !== '0',
     );
     const [gearOpen, setGearOpen] = useState(false);
+    const privMoney = usePrivacyMoney();
     const { items } = useWatchlist();
 
     const positionsPoll = usePoll<Position[]>(
@@ -168,7 +170,7 @@ export function TrayPanel() {
                 <span className={styles.title}>Shioaji Pro</span>
                 <span className={`${styles.headPnl} ${panel.dirText[pnlDir]}`}>
                     {positions.length > 0
-                        ? `未實現 ${fmtSigned(Math.round(totalPnl), 0)}`
+                        ? `未實現 ${maskMoney(fmtSigned(Math.round(totalPnl), 0), privMoney)}`
                         : ''}
                 </span>
                 <button
@@ -244,13 +246,21 @@ export function TrayPanel() {
                                     </span>
                                     <span className={styles.name}>
                                         {p.direction === 'Buy' ? '多' : '空'}{' '}
-                                        {fmtInt(p.quantity)} @
-                                        {fmtPrice(p.price)}
+                                        {'yd_quantity' in p
+                                            ? (p.quantity / 1000).toLocaleString(
+                                                  undefined,
+                                                  { maximumFractionDigits: 3 },
+                                              )
+                                            : fmtInt(p.quantity)}{' '}
+                                        @{fmtPrice(p.price)}
                                     </span>
                                     <span
                                         className={`${styles.num} ${panel.dirText[dir]}`}
                                     >
-                                        {fmtSigned(Math.round(p.pnl), 0)}
+                                        {maskMoney(
+                                            fmtSigned(Math.round(p.pnl), 0),
+                                            privMoney,
+                                        )}
                                     </span>
                                 </button>
                             );

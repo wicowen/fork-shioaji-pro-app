@@ -8,6 +8,11 @@ import type { WatchItem } from '../hooks/use-watchlist';
 import type { ServerWatchlist } from '../lib/shioaji';
 import { getQuote } from '../lib/stream';
 import type { ContractInfo } from '../lib/types/contract';
+import {
+    loadStockIndex,
+    searchStocks,
+    type StockMeta,
+} from '../lib/stock-index';
 import { fmtPct, fmtPrice, fmtSigned } from '../lib/utils/format';
 import { Sparkline } from './sparkline';
 import * as panel from './panel.css';
@@ -162,6 +167,25 @@ export function Watchlist({
     const [input, setInput] = useState('');
     const [busy, setBusy] = useState(false);
     const [creating, setCreating] = useState(false);
+    // 中文股名搜尋 (issue #2) — index loads lazily on first non-empty input
+    const [stockIndex, setStockIndex] = useState<StockMeta[] | null>(null);
+    const [suggestions, setSuggestions] = useState<StockMeta[]>([]);
+    const updateSuggestions = (value: string) => {
+        if (!value.trim()) {
+            setSuggestions([]);
+            return;
+        }
+        if (!stockIndex) {
+            loadStockIndex()
+                .then((idx) => {
+                    setStockIndex(idx);
+                    setSuggestions(searchStocks(idx, value));
+                })
+                .catch(() => undefined);
+            return;
+        }
+        setSuggestions(searchStocks(stockIndex, value));
+    };
     const [newName, setNewName] = useState('');
     const [confirmDelete, setConfirmDelete] = useState(false);
     const dragCode = useRef<string | null>(null);
@@ -380,12 +404,51 @@ export function Watchlist({
                 </div>
             </div>
             <div className={styles.addRow}>
+                {suggestions.length > 0 && (
+                    <div className={styles.suggestBox}>
+                        {suggestions.map((s) => (
+                            <button
+                                key={s.code}
+                                className={styles.suggestRow}
+                                onClick={async () => {
+                                    setSuggestions([]);
+                                    setInput('');
+                                    setBusy(true);
+                                    try {
+                                        await onAdd(s.code);
+                                    } finally {
+                                        setBusy(false);
+                                    }
+                                }}
+                            >
+                                <span className={styles.suggestCode}>
+                                    {s.code}
+                                </span>
+                                <span className={styles.suggestName}>
+                                    {s.name}
+                                </span>
+                                <span className={styles.suggestCat}>
+                                    {s.category}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                )}
                 <input
                     className={styles.addInput}
-                    placeholder='代碼（自動判別股/期/指數）'
+                    placeholder='代碼或股名（如 2330 / 台積電）'
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && submit()}
+                    onChange={(e) => {
+                        setInput(e.target.value);
+                        updateSuggestions(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            setSuggestions([]);
+                            submit();
+                        }
+                        if (e.key === 'Escape') setSuggestions([]);
+                    }}
                 />
                 <button className={panel.btn} onClick={submit} disabled={busy}>
                     {busy ? '…' : '+'}

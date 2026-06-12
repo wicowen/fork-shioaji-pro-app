@@ -42,14 +42,20 @@ export async function ensureContract(
         if (type) {
             contract = await fetchContract(code, type);
         } else {
-            // auto-detect: stock → futures → index
+            // auto-detect: stock → futures → options → index
+            // (option codes like TX417000C6 resolved nothing before, so
+            // clicking the option chain couldn't link a contract — issue #2)
             try {
                 contract = await fetchContract(code, 'STK');
             } catch {
                 try {
                     contract = await fetchContract(code, 'FUT');
                 } catch {
-                    contract = await fetchContract(code, 'IND');
+                    try {
+                        contract = await fetchContract(code, 'OPT');
+                    } catch {
+                        contract = await fetchContract(code, 'IND');
+                    }
                 }
             }
         }

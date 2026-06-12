@@ -8,7 +8,12 @@ import {
     placeStockOrder,
 } from './shioaji';
 import type { ContractBase } from './types/contract';
-import { ACTIVE_ORDER_STATUSES, type Action, type Trade } from './types/order';
+import {
+    ACTIVE_ORDER_STATUSES,
+    type Action,
+    type StockOrderLot,
+    type Trade,
+} from './types/order';
 
 export interface AppNotice {
     kind: 'ok' | 'err' | 'info';
@@ -74,14 +79,14 @@ export async function placeQuickOrder(
     action: Action,
     price: number | null,
     quantity: number,
-    opts?: { bypassRisk?: boolean }, // protective exits skip risk gating
+    opts?: { bypassRisk?: boolean; orderLot?: StockOrderLot },
 ): Promise<Trade> {
     if (!opts?.bypassRisk) {
         const blocked = checkOrderAllowed(quantity);
         if (blocked) throw new Error(blocked);
     }
     const market = price === null;
-    return sendOrder(contract, action, price, quantity, market);
+    return sendOrder(contract, action, price, quantity, market, opts?.orderLot);
 }
 
 async function sendOrder(
@@ -90,6 +95,7 @@ async function sendOrder(
     price: number | null,
     quantity: number,
     market: boolean,
+    orderLot?: StockOrderLot,
 ): Promise<Trade> {
     const trade = isFuturesContract(contract)
         ? await placeFuturesOrder(contract, {
@@ -106,9 +112,39 @@ async function sendOrder(
               quantity,
               price_type: market ? 'MKT' : 'LMT',
               order_type: market ? 'IOC' : 'ROD',
-              order_lot: 'Common',
+              order_lot: orderLot ?? 'Common',
           });
     return trade;
+}
+
+// close/flip a stock position counted in SHARES: whole lots go out as a
+// market Common order (張); the odd remainder as an IntradayOdd LIMIT at
+// the price limit (盤中零股 only accepts LMT — the limit price acts as a
+// marketable order)
+export async function placeStockExitByShares(
+    contract: ContractBase & { limit_up?: number; limit_down?: number },
+    action: Action,
+    shares: number,
+): Promise<Trade[]> {
+    const lots = Math.floor(shares / 1000);
+    const odd = shares % 1000;
+    const out: Trade[] = [];
+    if (lots > 0) {
+        out.push(await placeQuickOrder(contract, action, null, lots));
+    }
+    if (odd > 0) {
+        const limitPrice =
+            action === 'Sell' ? contract.limit_down : contract.limit_up;
+        if (!limitPrice) {
+            throw new Error('零股需要漲跌停價作為限價，無法取得');
+        }
+        out.push(
+            await placeQuickOrder(contract, action, limitPrice, odd, {
+                orderLot: 'IntradayOdd',
+            }),
+        );
+    }
+    return out;
 }
 
 // cancel every working order across stock + futures accounts

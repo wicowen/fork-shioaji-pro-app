@@ -15,9 +15,12 @@ import {
 import { fetchInfo } from '../lib/shioaji';
 import {
     maskAccountId,
+    maskMoney,
     maskName,
     setPrivacyMode,
+    setPrivacyMoney,
     usePrivacyMode,
+    usePrivacyMoney,
 } from '../lib/privacy';
 import { setSoundEnabled, soundEnabled } from '../lib/sounds';
 import {
@@ -86,6 +89,7 @@ function ThemeSettings() {
     const settings = useThemeSettings();
     const [sound, setSound] = useState(soundEnabled());
     const priv = usePrivacyMode();
+    const privMoney = usePrivacyMoney();
     return (
         <Menu label='主題'>
             {() => (
@@ -155,6 +159,13 @@ function ThemeSettings() {
                         onClick={() => setPrivacyMode(!priv)}
                     >
                         {priv ? '🕶 帳號已遮蔽' : '顯示完整帳號'}
+                    </button>
+                    <button
+                        className={styles.opt[privMoney ? 'on' : 'off']}
+                        title='遮蔽水位/數量/損益/權益等金額（炫耀截圖用）'
+                        onClick={() => setPrivacyMoney(!privMoney)}
+                    >
+                        {privMoney ? '🕶 金額已遮蔽' : '顯示完整金額'}
                     </button>
                 </>
             )}
@@ -480,6 +491,7 @@ export function HudHeader({
     onLoadPreset: (name: string) => void;
 }) {
     const streamStatus = useStreamStatus();
+    const privMoney = usePrivacyMoney();
     const [simulation, setSimulation] = useState<boolean | null>(null);
     const [version, setVersion] = useState('');
     const [now, setNow] = useState(() => new Date());
@@ -531,7 +543,7 @@ export function HudHeader({
             {accBalance !== undefined && (
                 <div className={styles.chip}>
                     <span className={styles.chipLabel}>銀行水位</span>
-                    <span>{fmtMoney(accBalance)}</span>
+                    <span>{maskMoney(fmtMoney(accBalance), privMoney)}</span>
                 </div>
             )}
 

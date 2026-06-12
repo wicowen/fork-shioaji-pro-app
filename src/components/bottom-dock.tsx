@@ -8,7 +8,12 @@ import {
     useAccounts,
 } from '../lib/account-store';
 import { ensureContract } from '../lib/contracts-cache';
-import { maskAccountId, usePrivacyMode } from '../lib/privacy';
+import {
+    maskAccountId,
+    maskMoney,
+    usePrivacyMode,
+    usePrivacyMoney,
+} from '../lib/privacy';
 import {
     cancelOrder,
     fetchSettlements,
@@ -16,7 +21,11 @@ import {
     updateOrderQty,
     type Settlement,
 } from '../lib/shioaji';
-import { notify, placeQuickOrder } from '../lib/trade';
+import {
+    notify,
+    placeQuickOrder,
+    placeStockExitByShares,
+} from '../lib/trade';
 import type { Trade } from '../lib/types/order';
 import type {
     AccountBalance,
@@ -48,6 +57,13 @@ function statusKind(status: string): 'ok' | 'pending' | 'bad' {
     return 'bad';
 }
 
+// stock quantities arrive in SHARES (unit=Share) — render as 張 with
+// decimals so odd lots stay visible (issue #2)
+function fmtStockLots(shares: number): string {
+    const lots = shares / 1000;
+    return lots.toLocaleString(undefined, { maximumFractionDigits: 3 });
+}
+
 function PositionsTable({
     positions,
     onChanged,
@@ -58,19 +74,26 @@ function PositionsTable({
     onSelectCode: (code: string) => void;
 }) {
     const [busyCode, setBusyCode] = useState<string | null>(null);
+    const privMoney = usePrivacyMoney();
     const act = async (p: Position, mode: 'close' | 'reverse') => {
         if (busyCode) return;
         setBusyCode(p.code);
         try {
             const contract = await ensureContract(p.code);
             const exit = p.direction === 'Buy' ? 'Sell' : 'Buy';
-            const qty =
-                mode === 'close' ? p.quantity : p.quantity * 2;
-            const trade = await placeQuickOrder(contract, exit, null, qty);
+            const qty = mode === 'close' ? p.quantity : p.quantity * 2;
+            if (isStockPosition(p)) {
+                // shares → Common lots + IntradayOdd remainder
+                await placeStockExitByShares(contract, exit, qty);
+            } else {
+                await placeQuickOrder(contract, exit, null, qty);
+            }
             notify({
                 kind: 'ok',
                 title: mode === 'close' ? '⏹ 平倉單已送出' : '🔄 反手單已送出',
-                body: `${p.code} 市價${exit === 'Buy' ? '買' : '賣'} ${qty} (${trade.status.status})`,
+                body: `${p.code} 市價${exit === 'Buy' ? '買' : '賣'} ${
+                    isStockPosition(p) ? `${fmtStockLots(qty)} 張` : `${qty} 口`
+                }`,
             });
             onChanged();
         } catch (e) {
@@ -97,6 +120,7 @@ function PositionsTable({
                     <th className={styles.th}>成本</th>
                     <th className={styles.th}>現價</th>
                     <th className={styles.th}>損益</th>
+                    <th className={styles.th}>報酬率</th>
                     <th className={styles.th} style={{ width: '18%' }}>
                         損益分布
                     </th>
@@ -106,6 +130,13 @@ function PositionsTable({
             <tbody>
                 {positions.map((p) => {
                     const dir = p.pnl > 0 ? 'up' : p.pnl < 0 ? 'down' : 'flat';
+                    // 報酬率 = signed price move vs entry (works for both
+                    // stocks and futures without knowing the multiplier)
+                    const sign = p.direction === 'Buy' ? 1 : -1;
+                    const retPct =
+                        p.price > 0
+                            ? ((p.last_price - p.price) / p.price) * 100 * sign
+                            : 0;
                     return (
                         <tr
                             key={`${p.code}-${p.id}`}
@@ -119,7 +150,14 @@ function PositionsTable({
                             >
                                 {p.direction === 'Buy' ? '多 LONG' : '空 SHORT'}
                             </td>
-                            <td className={styles.td}>{fmtInt(p.quantity)}</td>
+                            <td className={styles.td}>
+                                {maskMoney(
+                                    isStockPosition(p)
+                                        ? fmtStockLots(p.quantity)
+                                        : fmtInt(p.quantity),
+                                    privMoney,
+                                )}
+                            </td>
                             <td className={styles.td}>{fmtPrice(p.price)}</td>
                             <td className={styles.td}>
                                 {fmtPrice(p.last_price)}
@@ -127,7 +165,13 @@ function PositionsTable({
                             <td
                                 className={`${styles.td} ${panel.dirText[dir]}`}
                             >
-                                {fmtSigned(p.pnl, 0)}
+                                {maskMoney(fmtSigned(p.pnl, 0), privMoney)}
+                            </td>
+                            <td
+                                className={`${styles.td} ${panel.dirText[dir]}`}
+                            >
+                                {retPct > 0 ? '+' : ''}
+                                {retPct.toFixed(2)}%
                             </td>
                             <td className={styles.td}>
                                 <div className={styles.pnlBar}>
@@ -527,6 +571,7 @@ function AccountView({
     margin?: Margin;
     positions: Position[];
 }) {
+    const privMoney = usePrivacyMoney();
     const { data: settlements } = usePoll<Settlement[]>(
         useCallback(() => fetchSettlements().catch(() => []), []),
         60000,
@@ -536,7 +581,8 @@ function AccountView({
     // fees/taxes, plus futures equity and the settlement account balance
     const stockRows = positions.filter(isStockPosition).map((p) => {
         const sign = p.direction === 'Sell' ? -1 : 1;
-        const gross = p.last_price * p.quantity * 1000;
+        // quantity is in shares (unit=Share)
+        const gross = p.last_price * p.quantity;
         const isEtf = p.code.startsWith('00');
         const taxRate = isEtf ? 0.001 : 0.003;
         const net = gross * (1 - 0.001425 - taxRate);
@@ -648,7 +694,9 @@ function AccountView({
                                     : undefined
                             }
                         >
-                            {it.value}
+                            {it.label.includes('風險')
+                                ? it.value
+                                : maskMoney(it.value, privMoney)}
                         </span>
                     </div>
                 ))}

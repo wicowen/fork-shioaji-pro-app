@@ -49,3 +49,43 @@ export function maskAccountId(id: string, priv: boolean): string {
 export function maskName(name: string, priv: boolean): string {
     return priv ? '•••' : name;
 }
+
+// ---- 遮金額 (issue #2): hide amounts in screenshots — separate toggle ----
+
+const MONEY_KEY = 'sj-pro-privacy-money';
+
+let moneyOn = false;
+try {
+    moneyOn = localStorage.getItem(MONEY_KEY) === '1';
+} catch {
+    // storage unavailable — default off
+}
+
+const moneyListeners = new Set<() => void>();
+
+export function getPrivacyMoney(): boolean {
+    return moneyOn;
+}
+
+export function setPrivacyMoney(v: boolean) {
+    moneyOn = v;
+    try {
+        localStorage.setItem(MONEY_KEY, v ? '1' : '0');
+    } catch {
+        // session-only
+    }
+    moneyListeners.forEach((l) => l());
+}
+
+export function usePrivacyMoney(): boolean {
+    return useSyncExternalStore((l) => {
+        moneyListeners.add(l);
+        return () => {
+            moneyListeners.delete(l);
+        };
+    }, getPrivacyMoney);
+}
+
+export function maskMoney(text: string, priv: boolean): string {
+    return priv ? '•••••' : text;
+}

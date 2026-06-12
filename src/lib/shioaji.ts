@@ -218,9 +218,14 @@ export function fetchTrades(accountType: AccountTypeName) {
 // ---- portfolio ----
 
 export function fetchPositions(accountType: AccountTypeName) {
+    // stocks use Share unit so odd lots aren't truncated (issue #2);
+    // futures stay in contracts (Common)
     return apiPost<(StockPosition | FuturePosition)[]>(
         '/api/v1/portfolio/position_unit',
-        { ...accountBody(accountType), unit: 'Common' },
+        {
+            ...accountBody(accountType),
+            unit: accountType === 'S' ? 'Share' : 'Common',
+        },
     );
 }
 

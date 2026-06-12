@@ -183,11 +183,58 @@ export const loadingHint = style({
 });
 
 export const addRow = style({
+    position: 'relative',
     display: 'flex',
     gap: vars.space.xs,
     padding: vars.space.sm,
     borderTop: `1px solid ${vars.color.border}`,
     flexShrink: 0,
+});
+
+// name-search suggestions float above the add input
+export const suggestBox = style({
+    position: 'absolute',
+    bottom: '100%',
+    left: vars.space.sm,
+    right: vars.space.sm,
+    zIndex: 30,
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.borderBright}`,
+    borderRadius: vars.radius.sm,
+    boxShadow: '0 -6px 18px rgba(0, 0, 0, 0.3)',
+    overflow: 'hidden',
+});
+
+export const suggestRow = style({
+    display: 'grid',
+    gridTemplateColumns: '3.4rem 1fr auto',
+    columnGap: vars.space.sm,
+    alignItems: 'center',
+    width: '100%',
+    padding: `4px ${vars.space.sm}`,
+    textAlign: 'left',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 'none',
+    color: vars.color.foreground,
+    fontSize: '0.7rem',
+    ':hover': { background: vars.color.muted },
+});
+
+export const suggestCode = style({
+    fontFamily: vars.font.mono,
+    fontWeight: 600,
+});
+
+export const suggestName = style({
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+});
+
+export const suggestCat = style({
+    fontSize: '0.6rem',
+    color: vars.color.mutedForeground,
 });
 
 export const addInput = style({

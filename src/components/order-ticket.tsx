@@ -460,6 +460,8 @@ export function OrderTicket({
     );
 }
 
+// fallback only — the API's contract.multiplier is authoritative
+// (stock/ETF futures are 2000 shares, index futures vary)
 const FUT_MULTIPLIER: Record<string, number> = {
     TXF: 200,
     MXF: 50,
@@ -467,6 +469,15 @@ const FUT_MULTIPLIER: Record<string, number> = {
     EXF: 4000,
     FXF: 1000,
 };
+
+// 期交稅率 per product family (per side, on contract value):
+// equity-type futures 0.00002; options 0.001 on premium;
+// gold futures 0.0000025; interest-rate futures 0.00000125
+function futuresTaxRate(category: string): number {
+    if (category === 'GDF' || category === 'TGF') return 0.0000025;
+    if (category === 'GBF') return 0.00000125;
+    return 0.00002;
+}
 
 function CostEstimate({
     contract,
@@ -484,15 +495,30 @@ function CostEstimate({
     if (!price || !Number.isFinite(price) || price <= 0 || qty <= 0) {
         return null;
     }
-    const isFut =
-        contract.security_type === 'FUT' || contract.security_type === 'OPT';
-    if (isFut) {
-        const mult = FUT_MULTIPLIER[contract.category] ?? 50;
-        const notional = price * mult * qty;
-        const tax = Math.round(notional * 0.00002);
+    const mult =
+        contract.multiplier && contract.multiplier > 0
+            ? contract.multiplier
+            : (FUT_MULTIPLIER[contract.category] ?? 50);
+    if (contract.security_type === 'OPT') {
+        // options: premium × multiplier; 期交稅 0.1% of premium value
+        const premium = price * mult * qty;
+        const tax = Math.max(1, Math.round(premium * 0.001));
         return (
             <span className={styles.costRow}>
-                契約值 ≈ {fmtPrice(notional, 0)} · 期交稅 ≈ {tax}/邊
+                權利金 ≈ {fmtPrice(premium, 0)} · 期交稅 ≈ {tax}/邊
+            </span>
+        );
+    }
+    if (contract.security_type === 'FUT') {
+        const notional = price * mult * qty;
+        const tax = Math.max(
+            1,
+            Math.round(notional * futuresTaxRate(contract.category)),
+        );
+        return (
+            <span className={styles.costRow}>
+                契約值 ≈ {fmtPrice(notional, 0)}（乘數 {mult}）· 期交稅 ≈{' '}
+                {tax}/邊
             </span>
         );
     }
