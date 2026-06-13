@@ -15,7 +15,7 @@ it talks directly to your local `shioaji server`.
 clone 下來就能 build 出完整的 Web 版終端。桌面版外殼（Tauri）與
 AI Agent 為專屬模組，直接到 Releases 下載安裝檔即可使用。
 
-![Shioaji Pro — futures night session](docs/screenshot-futures.png)
+![Shioaji Pro — futures night session](docs/shot-terminal-dark.png)
 
 ## Features 功能
 
@@ -63,7 +63,7 @@ AI Agent 為專屬模組，直接到 Releases 下載安裝檔即可使用。
 
 | Dark | Light |
 |------|-------|
-| ![dark](docs/screenshot-dark.png) | ![light](docs/screenshot-light.png) |
+| ![dark](docs/shot-terminal-dark.png) | ![light](docs/shot-terminal-light.png) |
 
 ## Desktop App 桌面版（推薦）
 
