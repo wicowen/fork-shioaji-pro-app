@@ -1,0 +1,43 @@
+{
+    "pkg": "shioaji-pro-app",
+    "globalName": "ShioajiProUI",
+    "shape": "package",
+    "projectId": "70f5823e-f935-4fcc-8291-c081dce9a7cf",
+    "cssEntry": "ds-dist/shioaji-pro-app.css",
+    "extraFonts": [".design-sync/build/fonts.css"],
+    "readmeHeader": ".design-sync/conventions.md",
+    "provider": { "component": "DSThemeProvider" },
+    "overrides": {
+        "DepthLadder": { "cardMode": "column" },
+        "PanelChrome": { "cardMode": "column" },
+        "QuoteBoard": { "cardMode": "column" }
+    },
+    "componentSrcMap": {
+        "PanelChrome": "src/components/panel-chrome.tsx",
+        "QuoteBoard": "src/components/quote-board.tsx",
+        "DepthLadder": "src/components/depth-ladder.tsx",
+        "OrderFlow": "src/components/order-flow.tsx",
+        "PnlPanel": "src/components/pnl-panel.tsx",
+        "Sparkline": "src/components/sparkline.tsx",
+        "TickTape": "src/components/tick-tape.tsx",
+        "DepthMap": "src/components/depth-map.tsx",
+        "VolProfile": "src/components/vol-profile.tsx",
+        "OptPayoff": "src/components/opt-payoff.tsx",
+        "SectorHeatmap": "src/components/sector-heatmap.tsx",
+        "ChipsCard": "src/components/chips-card.tsx"
+    },
+    "dtsPropsFor": {
+        "PanelChrome": "  /** panel title shown in the drag-handle bar */\n  title: string;\n  /** show the link/pin symbol-lock control */\n  pinnable?: boolean;\n  /** locked symbol code, or null to follow the watchlist selection */\n  pin?: string | null;\n  /** the currently-selected code (used when locking) */\n  currentCode?: string | null;\n  onPinChange?: (pin: string | null) => void;\n  onRemove?: () => void;\n  onPopout?: () => void;\n  children?: React.ReactNode;",
+        "QuoteBoard": "  /** the contract to display */\n  contract: {\n    code: string;\n    name: string;\n    reference: number;\n    limit_up: number;\n    limit_down: number;\n  };\n  /** REST snapshot fallback when no live tick has arrived */\n  snapshot?: {\n    open?: number;\n    high?: number;\n    low?: number;\n    close?: number;\n    change_price?: number;\n    change_rate?: number;\n    total_volume?: number;\n  };",
+        "DepthLadder": "  /** contract code, e.g. \"TMFR1\" — the 5-level book is read from the live quote store */\n  code: string;",
+        "OrderFlow": "  /** the contract whose aggressive order flow is quantified */\n  contract: {\n    code: string;\n    security_type?: \"FUT\" | \"OPT\" | \"STK\" | \"IND\" | null;\n    name?: string;\n  };",
+        "PnlPanel": "  /** This component takes no props — it polls and charts realized P&L for the signed-in account. */",
+        "Sparkline": "  /** the contract whose intraday closes are drawn */\n  contract: { code: string };\n  /** live price appended to the series */\n  last?: number;\n  /** baseline (昨收/參考價) drawn as a dashed line; also sets the up/down color */\n  reference?: number;\n  width?: number;\n  height?: number;\n  /** fill the container width instead of the fixed `width` */\n  stretch?: boolean;",
+        "TickTape": "  /** the contract whose trade prints are streamed */\n  contract: {\n    code: string;\n    security_type?: \"FUT\" | \"OPT\" | \"STK\" | \"IND\" | null;\n  };",
+        "DepthMap": "  /** the contract whose 5-level book heatmap is recorded over time */\n  contract: { code: string };",
+        "VolProfile": "  /** the contract whose price-by-volume profile is built */\n  contract: {\n    code: string;\n    security_type?: \"FUT\" | \"OPT\" | \"STK\" | \"IND\" | null;\n  };",
+        "OptPayoff": "  /** option/futures positions to chart the settlement payoff for; simulated legs can be added in-panel */\n  positions?: Array<{\n    code: string;\n    direction: \"Buy\" | \"Sell\";\n    quantity: number;\n    price: number;\n  }>;",
+        "SectorHeatmap": "  /** called when a sector tile or member stock is picked */\n  onPick?: (code: string) => void;",
+        "ChipsCard": "  /** the stock to show margin/short/punish chips for (stocks only) */\n  contract: {\n    code: string;\n    name: string;\n    security_type?: \"STK\" | \"FUT\" | \"OPT\" | \"IND\" | null;\n    day_trade?: \"Yes\" | \"OnlyBuy\" | \"No\" | \"\";\n    margin_trading_balance?: number;\n    short_selling_balance?: number;\n  };"
+    }
+}

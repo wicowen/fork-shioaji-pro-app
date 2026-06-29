@@ -21,3 +21,11 @@ dist/
 src-tauri/target/
 src-tauri/binaries/
 src-tauri/gen/schemas/
+
+# design-sync (claude.ai/design) — staged scripts, build output, machine state
+.ds-sync/
+ds-bundle/
+ds-dist/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
