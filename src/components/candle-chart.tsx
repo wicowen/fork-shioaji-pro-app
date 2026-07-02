@@ -2,12 +2,14 @@
 // (lightweight-charts v5), live-updated from the SSE tick stream.
 
 import {
+    AreaSeries,
     CandlestickSeries,
     ColorType,
     createChart,
     HistogramSeries,
     LineSeries,
     LineStyle,
+    LineType,
     type IChartApi,
     type IPriceLine,
     type ISeriesApi,
@@ -16,13 +18,18 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import {
+    ArrowDown,
+    ArrowUp,
     Bell,
+    Copy,
     Crosshair,
     Eye,
     EyeOff,
     Maximize2,
+    MoreHorizontal,
     OctagonX,
     Settings2,
+    Star,
     X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -32,11 +39,15 @@ import {
     IndicatorSettingsModal,
 } from './indicator-dialog';
 import {
+    colorWithOpacity,
     DEF_BY_TYPE,
+    duplicateInstance,
     instanceLabel,
+    loadFavorites,
     loadInstances,
     newInstance,
     outputStyle,
+    saveFavorites,
     saveInstances,
     type IndicatorInstance,
 } from '../lib/indicator-defs';
@@ -86,20 +97,6 @@ const TRADE_MODES: { key: TradeMode; label: string }[] = [
     { key: 'alert', label: '警示' },
 ];
 
-// palette offered in indicator settings (professional terminal hues)
-const IND_PALETTE = [
-    '#e0a43c',
-    '#3d8bff',
-    '#b06fff',
-    '#19b6c9',
-    '#1fd286',
-    '#ff4d6a',
-    '#ff8a3d',
-    '#f5f7fa',
-    '#8b94a7',
-    '#5a89c9',
-];
-
 // keep paging until this floor — one page per fetch, spans widen with tf
 const MAX_HISTORY_DAYS = 1095; // ~3 years
 
@@ -136,6 +133,7 @@ export function CandleChart({
         useState<IndicatorInstance[]>(loadInstances);
     const [pickerOpen, setPickerOpen] = useState(false);
     const [settingsFor, setSettingsFor] = useState<string | null>(null);
+    const [legendMenuFor, setLegendMenuFor] = useState<string | null>(null);
     // instances snapshot taken when settings opens — 取消 restores it
     const settingsSnapshotRef = useRef<string>('');
     // legend live values: instId -> per-output {label,text,color}
@@ -150,6 +148,7 @@ export function CandleChart({
                 color: string;
                 series: ISeriesApi<'Line' | 'Histogram'>;
                 last?: number;
+                precision?: number;
             }[]
         >(),
     );
@@ -189,12 +188,14 @@ export function CandleChart({
     const lastPriceRef = useRef<number | null>(null);
 
     // legend readout — crosshair position when hovering, latest bar otherwise
-    const fmtLegendVal = (v: number) =>
-        Math.abs(v) >= 10000
-            ? v.toLocaleString('en-US', { maximumFractionDigits: 0 })
-            : Math.abs(v) >= 100
-              ? v.toFixed(1)
-              : v.toFixed(2);
+    const fmtLegendVal = (v: number, precision?: number) =>
+        precision !== undefined
+            ? v.toFixed(precision)
+            : Math.abs(v) >= 10000
+              ? v.toLocaleString('en-US', { maximumFractionDigits: 0 })
+              : Math.abs(v) >= 100
+                ? v.toFixed(1)
+                : v.toFixed(2);
     const updateLegend = (param?: MouseEventParams) => {
         const out: Record<
             string,
@@ -209,7 +210,10 @@ export function CandleChart({
                 if (d && typeof d.value === 'number') v = d.value;
                 return {
                     label: m.label,
-                    text: v === undefined ? '—' : fmtLegendVal(v),
+                    text:
+                        v === undefined
+                            ? '—'
+                            : fmtLegendVal(v, m.precision),
                     color: m.color,
                 };
             });
@@ -665,6 +669,10 @@ export function CandleChart({
             const def = DEF_BY_TYPE.get(inst.type);
             if (!def) continue;
             if (inst.hidden) continue; // 眼睛關閉 — 保留設定不畫線
+            // 時框顯示設定（TradingView Visibility on intervals）
+            if (inst.visibleTf && !inst.visibleTf.includes(tf.minutes)) {
+                continue;
+            }
             const params: Record<string, number> = {};
             for (const p of def.params) {
                 params[p.key] = inst.params[p.key] ?? p.def;
@@ -682,6 +690,7 @@ export function CandleChart({
                 color: string;
                 series: ISeriesApi<'Line' | 'Histogram'>;
                 last?: number;
+                precision?: number;
             }[] = [];
             const lastVal = (pts: IndicatorPoint[]) => {
                 for (let i = pts.length - 1; i >= 0; i--) {
@@ -689,19 +698,32 @@ export function CandleChart({
                 }
                 return undefined;
             };
+            // per-instance precision → axis/legend number formatting
+            const priceFormatOpt =
+                inst.precision !== undefined
+                    ? {
+                          priceFormat: {
+                              type: 'price' as const,
+                              precision: inst.precision,
+                              minMove: Math.pow(10, -inst.precision),
+                          },
+                      }
+                    : {};
+            const labelOpts = {
+                priceLineVisible: false,
+                lastValueVisible: inst.showLabels ?? false,
+            };
             for (const o of def.outputs) {
                 const pts = out[o.key];
                 if (!pts) continue;
                 const st = outputStyle(inst, def, o.key);
                 if (!st.visible) continue;
-                if (o.kind === 'histogram') {
-                    const s = chart.addSeries(
+                const color = colorWithOpacity(st.color, st.opacity);
+                let s: ISeriesApi<'Line' | 'Histogram' | 'Area'>;
+                if (st.plot === 'histogram') {
+                    s = chart.addSeries(
                         HistogramSeries,
-                        {
-                            color: st.color,
-                            priceLineVisible: false,
-                            lastValueVisible: false,
-                        },
+                        { color, ...labelOpts, ...priceFormatOpt },
                         pane,
                     );
                     s.setData(
@@ -714,52 +736,73 @@ export function CandleChart({
                                     ? p.value! >= 0
                                         ? colors.upVol
                                         : colors.downVol
-                                    : st.color,
+                                    : color,
                             })),
                     );
-                    indSeriesRef.current.push(s);
-                    firstSeries ??= s;
-                    metas.push({
-                        label: o.label,
-                        color: st.color,
-                        series: s,
-                        last: lastVal(pts),
-                    });
+                } else if (st.plot === 'area') {
+                    s = chart.addSeries(
+                        AreaSeries,
+                        {
+                            lineColor: color,
+                            lineWidth: st.width,
+                            topColor: colorWithOpacity(
+                                st.color,
+                                Math.min(st.opacity, 28),
+                            ),
+                            bottomColor: 'rgba(0, 0, 0, 0)',
+                            crosshairMarkerVisible: false,
+                            ...labelOpts,
+                            ...priceFormatOpt,
+                        },
+                        pane,
+                    );
+                    s.setData(toLineData(pts));
                 } else {
-                    const s = chart.addSeries(
+                    s = chart.addSeries(
                         LineSeries,
                         {
-                            color: st.color,
+                            color,
                             lineWidth: st.width,
                             lineStyle:
                                 o.kind === 'dashed'
                                     ? LineStyle.Dashed
                                     : LineStyle.Solid,
-                            priceLineVisible: false,
-                            lastValueVisible: false,
+                            lineType:
+                                st.plot === 'step'
+                                    ? LineType.WithSteps
+                                    : LineType.Simple,
                             crosshairMarkerVisible: false,
-                            ...(o.kind === 'points'
+                            ...(st.plot === 'circles'
                                 ? {
                                       lineVisible: false,
                                       pointMarkersVisible: true,
                                       pointMarkersRadius: 1.5,
                                   }
                                 : {}),
+                            ...labelOpts,
+                            ...priceFormatOpt,
                         },
                         pane,
                     );
                     s.setData(toLineData(pts));
-                    indSeriesRef.current.push(s);
-                    firstSeries ??= s;
-                    metas.push({
-                        label: o.label,
-                        color: st.color,
-                        series: s,
-                        last: lastVal(pts),
-                    });
                 }
+                indSeriesRef.current.push(
+                    s as ISeriesApi<'Line' | 'Histogram'>,
+                );
+                firstSeries ??= s as ISeriesApi<'Line' | 'Histogram'>;
+                metas.push({
+                    label: o.label,
+                    color: st.color,
+                    series: s as ISeriesApi<'Line' | 'Histogram'>,
+                    last: lastVal(pts),
+                    precision: inst.precision,
+                });
             }
-            legendMetaRef.current.set(inst.id, metas);
+            // 圖上不顯示數值時 legend 只留名稱
+            legendMetaRef.current.set(
+                inst.id,
+                (inst.showValues ?? true) ? metas : [],
+            );
             // reference levels（RSI 30/70、KD 20/80…）in the sub-pane
             if (pane > 0 && firstSeries && def.levels) {
                 for (const lv of def.levels) {
@@ -783,7 +826,7 @@ export function CandleChart({
         }
         updateLegendRef.current(); // seed legend with latest values
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dataVersion, instancesKey, themeKey]);
+    }, [dataVersion, instancesKey, themeKey, tf.minutes]);
 
     const commitInstances = (list: IndicatorInstance[]) => {
         setInstances(list);
@@ -803,7 +846,32 @@ export function CandleChart({
     };
     const openSettings = (id: string) => {
         settingsSnapshotRef.current = JSON.stringify(instances);
+        setLegendMenuFor(null);
         setSettingsFor(id);
+    };
+    const duplicateIndicator = (id: string) => {
+        const idx = instances.findIndex((i) => i.id === id);
+        if (idx < 0) return;
+        const dup = duplicateInstance(instances[idx]!);
+        const next = [...instances];
+        next.splice(idx + 1, 0, dup);
+        commitInstances(next);
+    };
+    // 視覺順序：陣列順序 = 疊圖 z-order 與副圖 pane 排序
+    const moveIndicator = (id: string, dir: -1 | 1) => {
+        const idx = instances.findIndex((i) => i.id === id);
+        const to = idx + dir;
+        if (idx < 0 || to < 0 || to >= instances.length) return;
+        const next = [...instances];
+        const [item] = next.splice(idx, 1);
+        next.splice(to, 0, item!);
+        commitInstances(next);
+    };
+    const toggleFavorite = (type: string) => {
+        const favs = loadFavorites();
+        if (favs.has(type)) favs.delete(type);
+        else favs.add(type);
+        saveFavorites(favs);
     };
     const cancelSettings = () => {
         try {
@@ -1063,7 +1131,6 @@ export function CandleChart({
                 {pickerOpen && (
                     <IndicatorDialog
                         instances={instances}
-                        palette={IND_PALETTE}
                         onAdd={addIndicator}
                         onClose={() => setPickerOpen(false)}
                     />
@@ -1071,7 +1138,10 @@ export function CandleChart({
                 {settingsInst && (
                     <IndicatorSettingsModal
                         inst={settingsInst}
-                        palette={IND_PALETTE}
+                        timeframes={TIMEFRAMES.map((t) => ({
+                            label: t.label,
+                            minutes: t.minutes,
+                        }))}
                         onPatch={(patch) =>
                             patchInstance(settingsInst.id, patch)
                         }
@@ -1107,10 +1177,14 @@ export function CandleChart({
                     triggers.length > 0 ||
                     instances.length > 0) && (
                     <div className={styles.triggerList}>
-                        {instances.map((inst) => {
+                        {instances.map((inst, idx) => {
                             const def = DEF_BY_TYPE.get(inst.type);
                             if (!def) return null;
                             const vals = legendValues[inst.id] ?? [];
+                            const offTf =
+                                !!inst.visibleTf &&
+                                !inst.visibleTf.includes(tf.minutes);
+                            const dimmed = inst.hidden || offTf;
                             const nameColor = outputStyle(
                                 inst,
                                 def,
@@ -1121,7 +1195,7 @@ export function CandleChart({
                                     key={inst.id}
                                     className={
                                         styles.legendItem[
-                                            inst.hidden ? 'hidden' : 'normal'
+                                            dimmed ? 'hidden' : 'normal'
                                         ]
                                     }
                                 >
@@ -1133,7 +1207,12 @@ export function CandleChart({
                                     >
                                         {instanceLabel(inst)}
                                     </button>
-                                    {!inst.hidden && (
+                                    {offTf && (
+                                        <span className={styles.legendNote}>
+                                            此時框停用
+                                        </span>
+                                    )}
+                                    {!dimmed && (
                                         <span className={styles.legendVals}>
                                             {vals.map((v, i) => (
                                                 <span
@@ -1185,7 +1264,128 @@ export function CandleChart({
                                         >
                                             <X size={11} />
                                         </button>
+                                        <button
+                                            className={styles.legendCtrlBtn}
+                                            title='更多'
+                                            onClick={() =>
+                                                setLegendMenuFor(
+                                                    legendMenuFor === inst.id
+                                                        ? null
+                                                        : inst.id,
+                                                )
+                                            }
+                                        >
+                                            <MoreHorizontal size={11} />
+                                        </button>
                                     </span>
+                                    {legendMenuFor === inst.id && (
+                                        <>
+                                            <div
+                                                className={
+                                                    styles.legendMenuBackdrop
+                                                }
+                                                onClick={() =>
+                                                    setLegendMenuFor(null)
+                                                }
+                                            />
+                                            <div
+                                                className={styles.legendMenu}
+                                            >
+                                                <button
+                                                    className={
+                                                        styles.legendMenuItem
+                                                    }
+                                                    onClick={() => {
+                                                        toggleFavorite(
+                                                            inst.type,
+                                                        );
+                                                        setLegendMenuFor(
+                                                            null,
+                                                        );
+                                                    }}
+                                                >
+                                                    <Star size={11} />
+                                                    加入 / 移除我的最愛
+                                                </button>
+                                                <button
+                                                    className={
+                                                        styles.legendMenuItem
+                                                    }
+                                                    onClick={() => {
+                                                        duplicateIndicator(
+                                                            inst.id,
+                                                        );
+                                                        setLegendMenuFor(
+                                                            null,
+                                                        );
+                                                    }}
+                                                >
+                                                    <Copy size={11} />
+                                                    複製指標
+                                                </button>
+                                                <button
+                                                    className={
+                                                        styles.legendMenuItem
+                                                    }
+                                                    disabled={idx === 0}
+                                                    onClick={() =>
+                                                        moveIndicator(
+                                                            inst.id,
+                                                            -1,
+                                                        )
+                                                    }
+                                                >
+                                                    <ArrowUp size={11} />
+                                                    上移（視覺順序）
+                                                </button>
+                                                <button
+                                                    className={
+                                                        styles.legendMenuItem
+                                                    }
+                                                    disabled={
+                                                        idx ===
+                                                        instances.length - 1
+                                                    }
+                                                    onClick={() =>
+                                                        moveIndicator(
+                                                            inst.id,
+                                                            1,
+                                                        )
+                                                    }
+                                                >
+                                                    <ArrowDown size={11} />
+                                                    下移（視覺順序）
+                                                </button>
+                                                <button
+                                                    className={
+                                                        styles.legendMenuItem
+                                                    }
+                                                    onClick={() =>
+                                                        openSettings(inst.id)
+                                                    }
+                                                >
+                                                    <Settings2 size={11} />
+                                                    設定…
+                                                </button>
+                                                <button
+                                                    className={
+                                                        styles.legendMenuItemDanger
+                                                    }
+                                                    onClick={() => {
+                                                        removeIndicator(
+                                                            inst.id,
+                                                        );
+                                                        setLegendMenuFor(
+                                                            null,
+                                                        );
+                                                    }}
+                                                >
+                                                    <X size={11} />
+                                                    移除
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             );
                         })}

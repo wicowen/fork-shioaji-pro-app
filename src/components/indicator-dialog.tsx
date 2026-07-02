@@ -2,21 +2,56 @@
 // (search / category sidebar / favorites / add-in-place) and the
 // per-instance settings modal（輸入 / 樣式 分頁、確定/取消）.
 
-import { LineChart, Search, Star, Waves, X } from 'lucide-react';
+import { ChevronDown, LineChart, Search, Star, Waves, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     DEF_BY_TYPE,
+    factoryInstance,
     INDICATOR_DEFS,
     loadFavorites,
     outputStyle,
     saveFavorites,
+    saveTypeDefault,
     type IndicatorDef,
     type IndicatorInstance,
     type OutputStyle,
+    type PlotKind,
 } from '../lib/indicator-defs';
 import * as styles from './indicator-dialog.css';
 
 const WIDTHS: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
+
+export const PLOT_LABEL: Record<PlotKind, string> = {
+    line: '線',
+    step: '階梯線',
+    area: '面積',
+    histogram: '柱狀',
+    circles: '圓點',
+};
+
+const PLOT_KINDS: PlotKind[] = ['line', 'step', 'area', 'histogram', 'circles'];
+
+const PRECISIONS: (number | undefined)[] = [undefined, 0, 1, 2, 3, 4];
+
+// TradingView-style color grid: grayscale row + 10 hues × 7 lightness tiers
+function hslHex(h: number, s: number, l: number): string {
+    const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+    const f = (n: number) => {
+        const k = (n + h / 30) % 12;
+        const c = l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+        return Math.round(255 * c)
+            .toString(16)
+            .padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+const HUES = [0, 25, 48, 95, 150, 178, 210, 245, 280, 330];
+export const COLOR_GRID: string[][] = [
+    [100, 95, 85, 70, 55, 40, 30, 20, 10, 0].map((l) => hslHex(0, 0, l)),
+    HUES.map((h) => hslHex(h, 82, 58)),
+    ...[84, 74, 64, 50, 38, 28].map((l) => HUES.map((h) => hslHex(h, 62, l))),
+];
 
 type Category = 'all' | 'fav' | 'overlay' | 'pane';
 
@@ -29,12 +64,10 @@ const CATEGORIES: { key: Category; label: string }[] = [
 
 export function IndicatorDialog({
     instances,
-    palette,
     onAdd,
     onClose,
 }: {
     instances: IndicatorInstance[];
-    palette: string[];
     onAdd: (type: string) => void;
     onClose: () => void;
 }) {
@@ -87,8 +120,6 @@ export function IndicatorDialog({
     );
     const overlays = filtered.filter((d) => d.category === 'overlay');
     const panes = filtered.filter((d) => d.category === 'pane');
-
-    void palette; // reserved: future custom-color default per add
 
     const renderRow = (d: IndicatorDef) => {
         const added = counts.get(d.type) ?? 0;
@@ -229,32 +260,130 @@ export function IndicatorDialog({
     );
 }
 
-// ---- per-instance settings（輸入 / 樣式）----
+// ---- per-instance settings（輸入 / 樣式 / 時框顯示）----
+
+// TradingView-style color panel: grid + hex + opacity + thickness,
+// expanded inline under the output row（modal 內不會被裁切）
+function ColorPanel({
+    style: s,
+    showWidth,
+    onChange,
+}: {
+    style: ReturnType<typeof outputStyle>;
+    showWidth: boolean;
+    onChange: (patch: OutputStyle) => void;
+}) {
+    const [hex, setHex] = useState(s.color);
+    return (
+        <div className={styles.colorPanel}>
+            <div className={styles.colorGrid}>
+                {COLOR_GRID.map((row, ri) => (
+                    <div key={ri} className={styles.colorGridRow}>
+                        {row.map((c) => (
+                            <button
+                                key={c}
+                                className={
+                                    styles.gridSwatch[
+                                        s.color.toLowerCase() ===
+                                        c.toLowerCase()
+                                            ? 'active'
+                                            : 'normal'
+                                    ]
+                                }
+                                style={{ background: c }}
+                                onClick={() => {
+                                    setHex(c);
+                                    onChange({ color: c });
+                                }}
+                            />
+                        ))}
+                    </div>
+                ))}
+            </div>
+            <div className={styles.colorTools}>
+                <span className={styles.colorToolLabel}>自訂</span>
+                <input
+                    className={styles.hexInput}
+                    value={hex}
+                    spellCheck={false}
+                    onChange={(e) => {
+                        const v = e.target.value.trim();
+                        setHex(v);
+                        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                            onChange({ color: v });
+                        }
+                    }}
+                />
+            </div>
+            <div className={styles.colorTools}>
+                <span className={styles.colorToolLabel}>透明度</span>
+                <input
+                    type='range'
+                    className={styles.opacitySlider}
+                    min={10}
+                    max={100}
+                    step={5}
+                    value={s.opacity}
+                    onChange={(e) =>
+                        onChange({ opacity: Number(e.target.value) })
+                    }
+                />
+                <span className={styles.opacityValue}>{s.opacity}%</span>
+            </div>
+            {showWidth && (
+                <div className={styles.colorTools}>
+                    <span className={styles.colorToolLabel}>粗細</span>
+                    {WIDTHS.map((w) => (
+                        <button
+                            key={w}
+                            className={
+                                styles.widthBtn[
+                                    s.width === w ? 'active' : 'normal'
+                                ]
+                            }
+                            title={`${w}px`}
+                            onClick={() => onChange({ width: w })}
+                        >
+                            <span
+                                className={styles.widthLine}
+                                style={{ height: `${w}px` }}
+                            />
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export function IndicatorSettingsModal({
     inst,
-    palette,
+    timeframes,
     onPatch,
     onRemove,
     onCommit,
     onCancel,
 }: {
     inst: IndicatorInstance;
-    palette: string[];
+    timeframes: { label: string; minutes: number }[];
     onPatch: (patch: Partial<IndicatorInstance>) => void;
     onRemove: () => void;
     onCommit: () => void;
     onCancel: () => void;
 }) {
     const def = DEF_BY_TYPE.get(inst.type);
-    const [tab, setTab] = useState<'inputs' | 'style'>(
+    const [tab, setTab] = useState<'inputs' | 'style' | 'visibility'>(
         def && def.params.length > 0 ? 'inputs' : 'style',
     );
+    // which output has its color panel / plot menu expanded
+    const [colorFor, setColorFor] = useState<string | null>(null);
+    const [plotFor, setPlotFor] = useState<string | null>(null);
+    const [defaultsOpen, setDefaultsOpen] = useState(false);
+    const [savedTip, setSavedTip] = useState(false);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onCancel();
-            if (e.key === 'Enter') onCommit();
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
@@ -269,6 +398,19 @@ export function IndicatorSettingsModal({
                 ...inst.styles,
                 [key]: { ...inst.styles?.[key], ...patch },
             },
+        });
+    };
+
+    const tfList = inst.visibleTf; // undefined = all
+    const tfChecked = (m: number) => !tfList || tfList.includes(m);
+    const toggleTf = (m: number) => {
+        const all = timeframes.map((t) => t.minutes);
+        const cur = tfList ?? all;
+        const next = tfChecked(m)
+            ? cur.filter((x) => x !== m)
+            : [...cur, m];
+        onPatch({
+            visibleTf: next.length >= all.length ? undefined : next,
         });
     };
 
@@ -290,7 +432,9 @@ export function IndicatorSettingsModal({
                     {def.params.length > 0 && (
                         <button
                             className={
-                                styles.tab[tab === 'inputs' ? 'active' : 'normal']
+                                styles.tab[
+                                    tab === 'inputs' ? 'active' : 'normal'
+                                ]
                             }
                             onClick={() => setTab('inputs')}
                         >
@@ -304,6 +448,16 @@ export function IndicatorSettingsModal({
                         onClick={() => setTab('style')}
                     >
                         樣式
+                    </button>
+                    <button
+                        className={
+                            styles.tab[
+                                tab === 'visibility' ? 'active' : 'normal'
+                            ]
+                        }
+                        onClick={() => setTab('visibility')}
+                    >
+                        時框顯示
                     </button>
                 </div>
                 <div className={styles.settingsBody}>
@@ -334,90 +488,275 @@ export function IndicatorSettingsModal({
                                 />
                             </label>
                         ))}
-                    {tab === 'style' &&
-                        def.outputs.map((o) => {
-                            const s = outputStyle(inst, def, o.key);
-                            return (
-                                <div
-                                    key={o.key}
-                                    className={styles.styleSection}
-                                >
-                                    <label className={styles.styleHead}>
-                                        <input
-                                            type='checkbox'
-                                            className={styles.checkbox}
-                                            checked={s.visible}
-                                            onChange={(e) =>
-                                                patchStyle(o.key, {
-                                                    visible: e.target.checked,
-                                                })
-                                            }
-                                        />
-                                        {o.label}
-                                    </label>
-                                    <div className={styles.styleControls}>
-                                        <div className={styles.swatchRow}>
-                                            {palette.map((c) => (
+                    {tab === 'style' && (
+                        <>
+                            {def.outputs.map((o) => {
+                                const s = outputStyle(inst, def, o.key);
+                                const isLine =
+                                    s.plot !== 'histogram' &&
+                                    s.plot !== 'circles';
+                                return (
+                                    <div
+                                        key={o.key}
+                                        className={styles.styleSection}
+                                    >
+                                        <div className={styles.styleRow}>
+                                            <label
+                                                className={styles.styleHead}
+                                            >
+                                                <input
+                                                    type='checkbox'
+                                                    className={styles.checkbox}
+                                                    checked={s.visible}
+                                                    onChange={(e) =>
+                                                        patchStyle(o.key, {
+                                                            visible:
+                                                                e.target
+                                                                    .checked,
+                                                        })
+                                                    }
+                                                />
+                                                {o.label}
+                                            </label>
+                                            <div
+                                                className={
+                                                    styles.styleRowBtns
+                                                }
+                                            >
                                                 <button
-                                                    key={c}
                                                     className={
-                                                        styles.swatch[
-                                                            s.color === c
+                                                        styles.previewBtn[
+                                                            colorFor === o.key
                                                                 ? 'active'
                                                                 : 'normal'
                                                         ]
                                                     }
-                                                    style={{ background: c }}
-                                                    onClick={() =>
-                                                        patchStyle(o.key, {
-                                                            color: c,
-                                                        })
-                                                    }
-                                                />
-                                            ))}
-                                        </div>
-                                        {o.kind !== 'histogram' && (
-                                            <div
-                                                className={styles.footerActions}
-                                            >
-                                                {WIDTHS.map((w) => (
-                                                    <button
-                                                        key={w}
+                                                    title='顏色 / 透明度 / 粗細'
+                                                    onClick={() => {
+                                                        setPlotFor(null);
+                                                        setColorFor(
+                                                            colorFor === o.key
+                                                                ? null
+                                                                : o.key,
+                                                        );
+                                                    }}
+                                                >
+                                                    <span
                                                         className={
-                                                            styles.widthBtn[
-                                                                s.width === w
+                                                            styles.previewSwatch
+                                                        }
+                                                        style={{
+                                                            background:
+                                                                s.color,
+                                                            opacity:
+                                                                s.opacity /
+                                                                100,
+                                                        }}
+                                                    />
+                                                    <span
+                                                        className={
+                                                            styles.previewLine
+                                                        }
+                                                        style={{
+                                                            background:
+                                                                s.color,
+                                                            height: `${s.width}px`,
+                                                        }}
+                                                    />
+                                                </button>
+                                                <button
+                                                    className={
+                                                        styles.plotBtn[
+                                                            plotFor === o.key
+                                                                ? 'active'
+                                                                : 'normal'
+                                                        ]
+                                                    }
+                                                    title='線型'
+                                                    onClick={() => {
+                                                        setColorFor(null);
+                                                        setPlotFor(
+                                                            plotFor === o.key
+                                                                ? null
+                                                                : o.key,
+                                                        );
+                                                    }}
+                                                >
+                                                    {PLOT_LABEL[s.plot]}
+                                                    <ChevronDown size={11} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {colorFor === o.key && (
+                                            <ColorPanel
+                                                style={s}
+                                                showWidth={isLine}
+                                                onChange={(patch) =>
+                                                    patchStyle(o.key, patch)
+                                                }
+                                            />
+                                        )}
+                                        {plotFor === o.key && (
+                                            <div
+                                                className={styles.plotMenu}
+                                            >
+                                                {PLOT_KINDS.map((k) => (
+                                                    <button
+                                                        key={k}
+                                                        className={
+                                                            styles.plotItem[
+                                                                s.plot === k
                                                                     ? 'active'
                                                                     : 'normal'
                                                             ]
                                                         }
-                                                        title={`${w}px`}
-                                                        onClick={() =>
+                                                        onClick={() => {
                                                             patchStyle(o.key, {
-                                                                width: w,
-                                                            })
-                                                        }
+                                                                plot: k,
+                                                            });
+                                                            setPlotFor(null);
+                                                        }}
                                                     >
-                                                        <span
-                                                            className={
-                                                                styles.widthLine
-                                                            }
-                                                            style={{
-                                                                height: `${w}px`,
-                                                            }}
-                                                        />
+                                                        {PLOT_LABEL[k]}
                                                     </button>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
+                            <div className={styles.sectionTitle}>
+                                輸出數值
+                            </div>
+                            <label className={styles.fieldRow}>
+                                <span>小數位數</span>
+                                <select
+                                    className={styles.fieldSelect}
+                                    value={inst.precision ?? 'auto'}
+                                    onChange={(e) =>
+                                        onPatch({
+                                            precision:
+                                                e.target.value === 'auto'
+                                                    ? undefined
+                                                    : Number(e.target.value),
+                                        })
+                                    }
+                                >
+                                    {PRECISIONS.map((p) => (
+                                        <option
+                                            key={p ?? 'auto'}
+                                            value={p ?? 'auto'}
+                                        >
+                                            {p === undefined ? '自動' : p}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className={styles.fieldRow}>
+                                <span>價格軸最新值標籤</span>
+                                <input
+                                    type='checkbox'
+                                    className={styles.checkbox}
+                                    checked={inst.showLabels ?? false}
+                                    onChange={(e) =>
+                                        onPatch({
+                                            showLabels: e.target.checked,
+                                        })
+                                    }
+                                />
+                            </label>
+                            <label className={styles.fieldRow}>
+                                <span>圖上顯示數值</span>
+                                <input
+                                    type='checkbox'
+                                    className={styles.checkbox}
+                                    checked={inst.showValues ?? true}
+                                    onChange={(e) =>
+                                        onPatch({
+                                            showValues: e.target.checked,
+                                        })
+                                    }
+                                />
+                            </label>
+                        </>
+                    )}
+                    {tab === 'visibility' && (
+                        <>
+                            <div className={styles.sectionTitle}>
+                                在哪些時框顯示這個指標
+                            </div>
+                            {timeframes.map((t) => (
+                                <label
+                                    key={t.minutes}
+                                    className={styles.fieldRow}
+                                >
+                                    <span>{t.label}</span>
+                                    <input
+                                        type='checkbox'
+                                        className={styles.checkbox}
+                                        checked={tfChecked(t.minutes)}
+                                        onChange={() => toggleTf(t.minutes)}
+                                    />
+                                </label>
+                            ))}
+                        </>
+                    )}
                 </div>
                 <div className={styles.settingsFooter}>
-                    <button className={styles.dangerBtn} onClick={onRemove}>
-                        移除指標
-                    </button>
+                    <div className={styles.defaultsWrap}>
+                        <button
+                            className={styles.cancelBtn}
+                            onClick={() => setDefaultsOpen((o) => !o)}
+                        >
+                            預設值 <ChevronDown size={11} />
+                        </button>
+                        {defaultsOpen && (
+                            <div className={styles.defaultsMenu}>
+                                <button
+                                    className={styles.defaultsItem}
+                                    onClick={() => {
+                                        const f = factoryInstance(inst);
+                                        onPatch({
+                                            params: f.params,
+                                            colors: f.colors,
+                                            styles: undefined,
+                                            precision: undefined,
+                                            showLabels: undefined,
+                                            showValues: undefined,
+                                        });
+                                        setDefaultsOpen(false);
+                                    }}
+                                >
+                                    重設為內建預設
+                                </button>
+                                <button
+                                    className={styles.defaultsItem}
+                                    onClick={() => {
+                                        saveTypeDefault(inst);
+                                        setDefaultsOpen(false);
+                                        setSavedTip(true);
+                                        setTimeout(
+                                            () => setSavedTip(false),
+                                            1800,
+                                        );
+                                    }}
+                                >
+                                    存為我的預設
+                                </button>
+                            </div>
+                        )}
+                        {savedTip && (
+                            <span className={styles.savedTip}>
+                                已存 — 之後新增 {def.short} 會直接套用
+                            </span>
+                        )}
+                        <button
+                            className={styles.dangerBtn}
+                            onClick={onRemove}
+                        >
+                            移除
+                        </button>
+                    </div>
                     <div className={styles.footerActions}>
                         <button
                             className={styles.cancelBtn}

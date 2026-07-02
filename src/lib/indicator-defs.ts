@@ -403,10 +403,15 @@ export const DEF_BY_TYPE = new Map(INDICATOR_DEFS.map((d) => [d.type, d]));
 
 // ---- instances ----
 
+// how one output is drawn（TradingView plot styles → lightweight-charts）
+export type PlotKind = 'line' | 'step' | 'area' | 'histogram' | 'circles';
+
 export interface OutputStyle {
     color?: string;
     width?: 1 | 2 | 3 | 4;
     visible?: boolean;
+    opacity?: number; // 0–100
+    plot?: PlotKind;
 }
 
 export interface IndicatorInstance {
@@ -418,6 +423,11 @@ export interface IndicatorInstance {
     // output key -> style overrides
     styles?: Record<string, OutputStyle>;
     hidden?: boolean; // 眼睛暫時隱藏，不刪設定
+    // 只在這些時框顯示（tf minutes）；undefined = 全部時框
+    visibleTf?: number[];
+    precision?: number; // 數值小數位數；undefined = 自動
+    showLabels?: boolean; // 價格軸最新值標籤（預設 false）
+    showValues?: boolean; // legend 顯示數值（預設 true）
 }
 
 // merged effective style for one output
@@ -425,14 +435,31 @@ export function outputStyle(
     inst: IndicatorInstance,
     def: IndicatorDef,
     key: string,
-): Required<OutputStyle> {
+): Required<Omit<OutputStyle, 'plot'>> & { plot: PlotKind } {
     const out = def.outputs.find((o) => o.key === key);
     const s = inst.styles?.[key] ?? {};
     return {
         color: s.color ?? inst.colors[key] ?? out?.color ?? '#8b94a7',
         width: s.width ?? out?.width ?? 1,
         visible: s.visible ?? true,
+        opacity: s.opacity ?? 100,
+        plot:
+            s.plot ??
+            (out?.kind === 'histogram'
+                ? 'histogram'
+                : out?.kind === 'points'
+                  ? 'circles'
+                  : 'line'),
     };
+}
+
+// hex + 0-100 opacity → rgba()（100% 直接回傳 hex，保住主題原色）
+export function colorWithOpacity(hex: string, opacity: number): string {
+    if (opacity >= 100 || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${(opacity / 100).toFixed(2)})`;
 }
 
 export function instanceLabel(inst: IndicatorInstance): string {
@@ -446,11 +473,86 @@ export function newInstance(type: string): IndicatorInstance {
     const def = DEF_BY_TYPE.get(type);
     const params: Record<string, number> = {};
     for (const p of def?.params ?? []) params[p.key] = p.def;
+    const saved = loadTypeDefaults()[type];
     return {
         id: `${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
         type,
+        params: { ...params, ...saved?.params },
+        colors: {},
+        ...(saved?.styles ? { styles: saved.styles } : {}),
+        ...(saved?.precision !== undefined
+            ? { precision: saved.precision }
+            : {}),
+        ...(saved?.showLabels !== undefined
+            ? { showLabels: saved.showLabels }
+            : {}),
+        ...(saved?.showValues !== undefined
+            ? { showValues: saved.showValues }
+            : {}),
+    };
+}
+
+export function duplicateInstance(inst: IndicatorInstance): IndicatorInstance {
+    return {
+        ...JSON.parse(JSON.stringify(inst)),
+        id: `${inst.type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    };
+}
+
+// ---- per-type user defaults（設定視窗「存為我的預設」）----
+
+export interface TypeDefaults {
+    params?: Record<string, number>;
+    styles?: Record<string, OutputStyle>;
+    precision?: number;
+    showLabels?: boolean;
+    showValues?: boolean;
+}
+
+const DEFAULTS_KEY = 'sj-pro-ind-defaults-v1';
+
+export function loadTypeDefaults(): Record<string, TypeDefaults> {
+    try {
+        const raw = localStorage.getItem(DEFAULTS_KEY);
+        if (raw) return JSON.parse(raw) as Record<string, TypeDefaults>;
+    } catch {
+        // fresh
+    }
+    return {};
+}
+
+export function saveTypeDefault(inst: IndicatorInstance) {
+    const all = loadTypeDefaults();
+    all[inst.type] = {
+        params: inst.params,
+        ...(inst.styles ? { styles: inst.styles } : {}),
+        ...(inst.precision !== undefined ? { precision: inst.precision } : {}),
+        ...(inst.showLabels !== undefined
+            ? { showLabels: inst.showLabels }
+            : {}),
+        ...(inst.showValues !== undefined
+            ? { showValues: inst.showValues }
+            : {}),
+    };
+    try {
+        localStorage.setItem(DEFAULTS_KEY, JSON.stringify(all));
+    } catch {
+        // keep in-memory
+    }
+}
+
+// factory-reset one instance（清掉自訂參數與樣式，回到內建預設）
+export function factoryInstance(inst: IndicatorInstance): IndicatorInstance {
+    const def = DEF_BY_TYPE.get(inst.type);
+    const params: Record<string, number> = {};
+    for (const p of def?.params ?? []) params[p.key] = p.def;
+    return {
+        id: inst.id,
+        type: inst.type,
         params,
         colors: {},
+        ...(inst.hidden ? { hidden: inst.hidden } : {}),
+        ...(inst.visibleTf ? { visibleTf: inst.visibleTf } : {}),
     };
 }
 

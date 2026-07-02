@@ -259,8 +259,8 @@ export const footer = style({
 export const settingsDialog = style({
     display: 'flex',
     flexDirection: 'column',
-    width: 'min(24rem, 92vw)',
-    maxHeight: 'min(30rem, 80vh)',
+    width: 'min(27rem, 92vw)',
+    maxHeight: 'min(34rem, 84vh)',
     background: vars.color.panelRaised,
     border: `1px solid ${vars.color.borderBright}`,
     borderRadius: vars.radius.lg,
@@ -353,37 +353,245 @@ export const styleHead = style({
     color: vars.color.foreground,
 });
 
-export const styleControls = style({
+export const styleRow = style({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '10px',
 });
 
-export const swatchRow = style({
+export const styleRowBtns = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+});
+
+const previewBtnBase = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '5px',
+    cursor: 'pointer',
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '4px 8px',
+    ':hover': { borderColor: vars.color.borderBright },
+});
+
+export const previewBtn = styleVariants({
+    normal: [previewBtnBase],
+    active: [previewBtnBase, { borderColor: vars.color.accent }],
+});
+
+export const previewSwatch = style({
+    width: '12px',
+    height: '12px',
+    borderRadius: '3px',
+    border: '1px solid rgba(255,255,255,0.15)',
+});
+
+export const previewLine = style({
+    width: '22px',
+    borderRadius: '1px',
+});
+
+const plotBtnBase = style({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    fontFamily: vars.font.body,
+    fontSize: '0.68rem',
+    cursor: 'pointer',
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    color: vars.color.foreground,
+    padding: '4px 8px',
+    ':hover': { borderColor: vars.color.borderBright },
+});
+
+export const plotBtn = styleVariants({
+    normal: [plotBtnBase],
+    active: [plotBtnBase, { borderColor: vars.color.accent }],
+});
+
+export const plotMenu = style({
     display: 'flex',
     gap: '4px',
     flexWrap: 'wrap',
+    padding: '6px',
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.md,
 });
 
-const swatchBase = style({
-    width: '14px',
-    height: '14px',
+const plotItemBase = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.7rem',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    color: vars.color.foreground,
+    padding: '3px 10px',
+    ':hover': { borderColor: vars.color.borderBright },
+});
+
+export const plotItem = styleVariants({
+    normal: [plotItemBase],
+    active: [
+        plotItemBase,
+        { borderColor: vars.color.accent, fontWeight: 600 },
+    ],
+});
+
+// ---- TradingView-style color panel ----
+
+export const colorPanel = style({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    padding: '8px',
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.md,
+});
+
+export const colorGrid = style({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
+});
+
+export const colorGridRow = style({
+    display: 'flex',
+    gap: '3px',
+});
+
+const gridSwatchBase = style({
+    width: '18px',
+    height: '18px',
     borderRadius: '3px',
     cursor: 'pointer',
-    border: '1px solid rgba(255,255,255,0.12)',
+    border: '1px solid rgba(255,255,255,0.08)',
     padding: 0,
+    ':hover': { transform: 'scale(1.15)' },
 });
 
-export const swatch = styleVariants({
-    normal: [swatchBase],
+export const gridSwatch = styleVariants({
+    normal: [gridSwatchBase],
     active: [
-        swatchBase,
+        gridSwatchBase,
         {
-            outline: `2px solid ${vars.color.foreground}`,
+            outline: `2px solid ${vars.color.accent}`,
             outlineOffset: '1px',
         },
     ],
+});
+
+export const colorTools = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+});
+
+export const colorToolLabel = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.66rem',
+    color: vars.color.mutedForeground,
+    width: '3.2rem',
+    flexShrink: 0,
+});
+
+export const hexInput = style({
+    width: '5.4rem',
+    fontFamily: vars.font.mono,
+    fontSize: '0.7rem',
+    color: vars.color.foreground,
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '3px 6px',
+    outline: 'none',
+    ':focus': { borderColor: vars.color.accent },
+});
+
+export const opacitySlider = style({
+    flex: 1,
+    accentColor: vars.color.accent,
+    cursor: 'pointer',
+});
+
+export const opacityValue = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.68rem',
+    color: vars.color.foreground,
+    width: '2.6rem',
+    textAlign: 'right',
+});
+
+export const sectionTitle = style({
+    fontFamily: vars.font.display,
+    fontSize: '0.6rem',
+    fontWeight: 600,
+    letterSpacing: '0.08em',
+    color: vars.color.mutedForeground,
+    paddingTop: '4px',
+    userSelect: 'none',
+});
+
+export const fieldSelect = style({
+    fontFamily: vars.font.mono,
+    fontSize: '0.74rem',
+    color: vars.color.foreground,
+    background: vars.color.inset,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: vars.radius.sm,
+    padding: '3px 6px',
+    outline: 'none',
+    ':focus': { borderColor: vars.color.accent },
+});
+
+export const defaultsWrap = style({
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+});
+
+export const defaultsMenu = style({
+    position: 'absolute',
+    bottom: 'calc(100% + 6px)',
+    left: 0,
+    zIndex: 10,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1px',
+    width: '10rem',
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.borderBright}`,
+    borderRadius: vars.radius.md,
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+    padding: '4px',
+});
+
+export const defaultsItem = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.72rem',
+    textAlign: 'left',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: vars.radius.sm,
+    color: vars.color.foreground,
+    padding: '5px 8px',
+    ':hover': { background: vars.color.muted },
+});
+
+export const savedTip = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.64rem',
+    color: vars.color.accent,
 });
 
 const widthBtnBase = style({

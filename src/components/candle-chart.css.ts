@@ -186,6 +186,7 @@ export const chartHost = style({
 // ---- indicator legend（TradingView 式，圖上左上角，一列一個實例）----
 
 const legendItemBase = style({
+    position: 'relative', // anchors the ⋯ context menu
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
@@ -245,6 +246,58 @@ export const legendCtrlBtn = style({
     borderRadius: vars.radius.sm,
     ':hover': { color: vars.color.foreground, background: vars.color.muted },
 });
+
+export const legendNote = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.58rem',
+    color: vars.color.mutedForeground,
+});
+
+export const legendMenuBackdrop = style({
+    position: 'fixed',
+    inset: 0,
+    zIndex: 40,
+});
+
+export const legendMenu = style({
+    position: 'absolute',
+    top: 'calc(100% + 3px)',
+    left: 0,
+    zIndex: 41,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1px',
+    width: '11rem',
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.borderBright}`,
+    borderRadius: vars.radius.md,
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+    padding: '4px',
+});
+
+const legendMenuItemBase = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px',
+    fontFamily: vars.font.body,
+    fontSize: '0.7rem',
+    textAlign: 'left',
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: vars.radius.sm,
+    color: vars.color.foreground,
+    padding: '5px 8px',
+    ':hover': { background: vars.color.muted },
+    ':disabled': { opacity: 0.35, cursor: 'default' },
+});
+
+export const legendMenuItem = legendMenuItemBase;
+
+export const legendMenuItemDanger = style([
+    legendMenuItemBase,
+    { color: vars.color.danger },
+]);
 
 export const emptyMsg = style({
     position: 'absolute',
