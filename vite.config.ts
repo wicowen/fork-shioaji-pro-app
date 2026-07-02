@@ -39,6 +39,9 @@ export default defineConfig(({ mode }) => {
             },
         },
         server: {
+            // honor a harness-assigned port (preview tooling sets PORT);
+            // default stays 5173 for tauri dev
+            port: Number(process.env.PORT) || 5173,
             proxy: {
                 '/api': 'http://localhost:8080',
             },
