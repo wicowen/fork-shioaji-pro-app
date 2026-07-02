@@ -99,6 +99,12 @@ export const td = style({
     },
 });
 
+// quantity cells render mixed-unit stock amounts ("5張+10股") — CJK glyphs
+// are line-break opportunities, so pin the whole quantity to one line
+export const qtyCell = style({
+    whiteSpace: 'nowrap',
+});
+
 const chipBase = style({
     display: 'inline-block',
     padding: '1px 8px',

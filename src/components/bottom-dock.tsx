@@ -196,7 +196,7 @@ function PositionsTable({
                             >
                                 {p.direction === 'Buy' ? '多 LONG' : '空 SHORT'}
                             </td>
-                            <td className={styles.td}>
+                            <td className={`${styles.td} ${styles.qtyCell}`}>
                                 {maskMoney(
                                     isStockPosition(p)
                                         ? fmtStockLots(p.quantity)
