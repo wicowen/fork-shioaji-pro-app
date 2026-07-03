@@ -111,11 +111,15 @@ export interface ChartColors {
     crosshair: string;
     border: string;
     labelBg: string;
+    cost: string;
 }
 
 const CHROME: Record<
     ThemeMode,
-    Pick<ChartColors, 'text' | 'grid' | 'crosshair' | 'border' | 'labelBg'>
+    Pick<
+        ChartColors,
+        'text' | 'grid' | 'crosshair' | 'border' | 'labelBg' | 'cost'
+    >
 > = {
     dark: {
         text: '#8b94a7',
@@ -123,6 +127,7 @@ const CHROME: Record<
         crosshair: '#3d8bff',
         border: '#222b37',
         labelBg: '#181f2a',
+        cost: '#b388ff',
     },
     midnight: {
         text: '#7e8798',
@@ -130,6 +135,7 @@ const CHROME: Record<
         crosshair: '#3d8bff',
         border: '#1a1f29',
         labelBg: '#10131a',
+        cost: '#b388ff',
     },
     light: {
         text: '#5f6b80',
@@ -137,6 +143,7 @@ const CHROME: Record<
         crosshair: '#2962ff',
         border: '#dde2e9',
         labelBg: '#f7f8fa',
+        cost: '#7c4dff',
     },
 };
 

@@ -152,6 +152,7 @@ function BlockBody({
                     <CandleChart
                         contract={contract}
                         trades={dockProps.trades}
+                        positions={dockProps.positions}
                         onOrdersChanged={dockProps.onTradesChanged}
                     />
                 </>
@@ -367,6 +368,7 @@ function PopoutView({
                         <CandleChart
                             contract={contract}
                             trades={tradesPoll.data ?? []}
+                            positions={popoutPositionsPoll.data ?? []}
                             onOrdersChanged={tradesPoll.refresh}
                         />
                     </>

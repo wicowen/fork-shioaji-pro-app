@@ -142,12 +142,22 @@ export const indSwatch = style({
     flexShrink: 0,
 });
 
-export const modeHint = style({
+// top-center column that stacks the mode hint and the magnet hint without
+// overlap (both can be visible at once, e.g. picking a price in buy mode)
+export const hintStack = style({
     position: 'absolute',
     top: '8px',
     left: '50%',
     transform: 'translateX(-50%)',
     zIndex: 5,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    pointerEvents: 'none',
+});
+
+export const modeHint = style({
     fontFamily: vars.font.body,
     fontSize: '0.66rem',
     fontWeight: 600,
@@ -155,7 +165,19 @@ export const modeHint = style({
     background: vars.color.amber,
     borderRadius: vars.radius.sm,
     padding: '2px 10px',
-    pointerEvents: 'none',
+});
+
+// neutral pill (distinct from the amber action hint) shown while the
+// crosshair magnet is held on
+export const magnetHint = style({
+    fontFamily: vars.font.body,
+    fontSize: '0.66rem',
+    fontWeight: 600,
+    color: vars.color.foreground,
+    background: vars.color.panelRaised,
+    border: `1px solid ${vars.color.borderBright}`,
+    borderRadius: vars.radius.sm,
+    padding: '2px 10px',
 });
 
 export const triggerList = style({

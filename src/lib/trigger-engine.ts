@@ -73,6 +73,25 @@ export function removeTrigger(id: string) {
     persist();
 }
 
+// Update a trigger's price and persist. Returns undefined when the id no
+// longer exists (e.g. it fired or was OCO-cancelled mid-drag) so callers can
+// skip the success toast and avoid resurrecting a removed trigger. Only price
+// changes — condition/action/kind keep the direction the trigger was created
+// with.
+export function updateTrigger(
+    id: string,
+    price: number,
+): TriggerOrder | undefined {
+    let updated: TriggerOrder | undefined;
+    triggers = triggers.map((t) => {
+        if (t.id !== id) return t;
+        updated = { ...t, price };
+        return updated;
+    });
+    if (updated) persist();
+    return updated;
+}
+
 export function getTriggers(): TriggerOrder[] {
     return triggers;
 }

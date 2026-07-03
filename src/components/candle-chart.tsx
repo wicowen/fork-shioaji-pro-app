@@ -5,6 +5,7 @@ import {
     CandlestickSeries,
     ColorType,
     createChart,
+    CrosshairMode,
     HistogramSeries,
     LineSeries,
     type IChartApi,
@@ -13,40 +14,42 @@ import {
     type UTCTimestamp,
 } from 'lightweight-charts';
 import { Bell, Crosshair, OctagonX, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuote } from '../hooks/use-stream';
-import { bollinger, ema, sma, vwap } from '../lib/indicators';
-import { cancelOrder, fetchKbars, updateOrderPrice } from '../lib/shioaji';
+import { bollinger, ema, sma, vwap, type IndicatorPoint } from '../lib/indicators';
+import { loadChartBars } from '../lib/chart-data';
+import { cancelOrder, updateOrderPrice } from '../lib/shioaji';
 import { setPickedPrice } from '../lib/price-sync';
 import { notify, placeQuickOrder } from '../lib/trade';
 import {
     addTrigger,
     removeTrigger,
+    updateTrigger,
     useTriggers,
+    type TriggerOrder,
 } from '../lib/trigger-engine';
 import type { ContractBase } from '../lib/types/contract';
 import type { Candle } from '../lib/types/market';
 import { ACTIVE_ORDER_STATUSES, type Trade } from '../lib/types/order';
+import type { Position } from '../lib/types/portfolio';
 import { fmtPrice } from '../lib/utils/format';
 import { roundToTick } from '../lib/utils/ticksize';
 import { getChartColors, useThemeSettings } from '../lib/theme-store';
-import {
-    aggregate,
-    dateStrOffset,
-    kbarsToCandles,
-    wallClockToUtc,
-} from '../lib/utils/kbars';
+import { wallClockToUtc } from '../lib/utils/kbars';
 import * as panel from './panel.css';
 import * as styles from './candle-chart.css';
 
-// NOTE: the kbars API only serves 1-minute bars, so 1D aggregates a huge
-// payload (a year of TXF ≈ 280k bars / 18MB) — keep the range tight enough
-// to load on slow machines without looking dead
+// NOTE: the kbars API only serves 1-minute bars AND caps a single query at
+// ~30 days, so `days` is the intended lookback — loadChartBars() fetches at
+// most LIVE_MAX_DAYS live and splices bundled deep history before it for the
+// long timeframes (see src/lib/chart-data.ts).
 const TIMEFRAMES = [
     { label: '1m', minutes: 1, days: 3 },
     { label: '5m', minutes: 5, days: 10 },
     { label: '15m', minutes: 15, days: 20 },
+    { label: '30m', minutes: 30, days: 30 },
     { label: '60m', minutes: 60, days: 60 },
+    { label: '120m', minutes: 120, days: 90 },
     { label: '1D', minutes: 1440, days: 240 },
 ] as const;
 
@@ -66,6 +69,8 @@ const INDICATORS: { key: string; label: string; color: string }[] = [
     { key: 'ma10', label: 'MA10', color: '#3d8bff' },
     { key: 'ma20', label: 'MA20', color: '#b06fff' },
     { key: 'ma60', label: 'MA60', color: '#7e8798' },
+    { key: 'ma120', label: 'MA120', color: '#616a79' },
+    { key: 'ma240', label: 'MA240', color: '#474e5a' },
     { key: 'ema12', label: 'EMA12', color: '#19b6c9' },
     { key: 'bb', label: 'BB(20,2)', color: '#8b94a7' },
     { key: 'vwap', label: 'VWAP', color: '#f5f7fa' },
@@ -81,13 +86,21 @@ function loadIndicators(): Set<string> {
     return new Set();
 }
 
+// Hold this key to temporarily engage the crosshair price-magnet (snap the
+// horizontal line to the candle close); the crosshair is free by default so an
+// exact price can be picked between OHLC values. The Option key on macOS
+// reports e.key === 'Alt'.
+const MAGNET_HOLD_KEY = 'Alt';
+
 export function CandleChart({
     contract,
     trades = [],
+    positions = [],
     onOrdersChanged,
 }: {
     contract: ContractBase;
     trades?: Trade[];
+    positions?: Position[];
     onOrdersChanged?: () => void;
 }) {
     const hostRef = useRef<HTMLDivElement>(null);
@@ -112,10 +125,18 @@ export function CandleChart({
     const [tradeQty, setTradeQty] = useState(1);
     const [indicators, setIndicators] = useState<Set<string>>(loadIndicators);
     const [indMenuOpen, setIndMenuOpen] = useState(false);
+    // true while the magnet-hold key is held (crosshair snaps to close)
+    const [magnetOn, setMagnetOn] = useState(false);
     const [dataVersion, setDataVersion] = useState(0);
     const barsRef = useRef<Candle[]>([]);
-    const indSeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
+    const indSeriesRef = useRef<
+        { series: ISeriesApi<'Line'>; data: (bars: Candle[]) => IndicatorPoint[] }[]
+    >([]);
+    // live ticks set this; the throttle interval redraws indicators when set
+    const indDirtyRef = useRef(false);
     const triggers = useTriggers().filter((t) => t.code === contract.code);
+    const triggersRef = useRef(triggers);
+    triggersRef.current = triggers; // empty-dep drag effect always reads latest
     const workingOrders = useMemo(
         () =>
             trades.filter(
@@ -127,9 +148,25 @@ export function CandleChart({
             ),
         [trades, contract],
     );
+    // open positions for this contract — their avg cost is drawn as a line
+    const positionLines = useMemo(
+        () =>
+            positions.filter(
+                (p) =>
+                    p.quantity > 0 &&
+                    (p.code === contract.code ||
+                        (!!contract.target_code &&
+                            p.code === contract.target_code)),
+            ),
+        [positions, contract],
+    );
+    const positionKey = JSON.stringify(
+        positionLines.map((p) => [p.price, p.direction, p.quantity]),
+    );
     const workingOrdersRef = useRef(workingOrders);
     workingOrdersRef.current = workingOrders;
     const orderLinesRef = useRef(new Map<string, IPriceLine>());
+    const triggerLinesRef = useRef(new Map<string, IPriceLine>());
     const onOrdersChangedRef = useRef(onOrdersChanged);
     onOrdersChangedRef.current = onOrdersChanged;
 
@@ -160,6 +197,10 @@ export function CandleChart({
                 horzLines: { color: c.grid },
             },
             crosshair: {
+                // Default to Normal (free crosshair) for precise price
+                // picking; hold MAGNET_HOLD_KEY to snap the horizontal line to
+                // the candle close. See the hold-key effect below.
+                mode: CrosshairMode.Normal,
                 vertLine: {
                     color: c.crosshair,
                     labelBackgroundColor: c.labelBg,
@@ -185,13 +226,18 @@ export function CandleChart({
             wickUpColor: c.up,
             wickDownColor: c.down,
         });
-        const vol = chart.addSeries(HistogramSeries, {
-            priceFormat: { type: 'volume' },
-            priceScaleId: 'vol',
+        const vol = chart.addSeries(
+            HistogramSeries,
+            { priceFormat: { type: 'volume' }, priceScaleId: 'vol' },
+            1, // own pane below the price pane — no candle overlap
+        );
+        chart.priceScale('vol', 1).applyOptions({
+            scaleMargins: { top: 0.1, bottom: 0 },
         });
-        chart.priceScale('vol').applyOptions({
-            scaleMargins: { top: 0.82, bottom: 0 },
-        });
+        // price pane ~3x the height of the volume pane
+        const chartPanes = chart.panes();
+        chartPanes[0]?.setStretchFactor(3);
+        chartPanes[1]?.setStretchFactor(1);
         chartRef.current = chart;
         candleSeriesRef.current = candles;
         volSeriesRef.current = vol;
@@ -287,6 +333,46 @@ export function CandleChart({
         };
     }, []);
 
+    // hold Alt/Option to temporarily engage the crosshair price-magnet (snap to
+    // close); the crosshair is free by default and returns to free on key
+    // release or when the window loses focus. This only flips the crosshair
+    // mode and never touches the mouse handlers, so it cannot interfere with
+    // the order-line drag logic further down.
+    useEffect(() => {
+        let engaged = false;
+        const applyCrosshairMode = (m: CrosshairMode) =>
+            chartRef.current?.applyOptions({ crosshair: { mode: m } });
+        const engage = () => {
+            if (engaged) return; // keydown auto-repeats while held
+            engaged = true;
+            applyCrosshairMode(CrosshairMode.Magnet);
+            setMagnetOn(true);
+            console.log('[CandleChart] magnet: engaged (snap to close)');
+        };
+        const release = () => {
+            if (!engaged) return;
+            engaged = false;
+            applyCrosshairMode(CrosshairMode.Normal);
+            setMagnetOn(false);
+            console.log('[CandleChart] magnet: released (free cursor)');
+        };
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === MAGNET_HOLD_KEY) engage();
+        };
+        const onKeyUp = (e: KeyboardEvent) => {
+            if (e.key === MAGNET_HOLD_KEY || !e.altKey) release();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        // never stay stuck in magnet mode if focus is lost mid-hold
+        window.addEventListener('blur', release);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+            window.removeEventListener('blur', release);
+        };
+    }, []);
+
     // keep latest theme readable inside the chart-creation effect
     const themeSettingsRef = useRef(themeSettings);
     themeSettingsRef.current = themeSettings;
@@ -357,10 +443,9 @@ export function CandleChart({
             setDataVersion((v) => v + 1);
             loadedKeyRef.current = loadKey; // live bars may build from here
         };
-        fetchKbars(contract, dateStrOffset(tf.days), dateStrOffset(0))
-            .then((k) => {
+        loadChartBars(contract, tf.minutes, tf.days)
+            .then((bars) => {
                 if (cancelled || !candleSeriesRef.current) return;
-                const bars = aggregate(kbarsToCandles(k), tf.minutes);
                 if (bars.length === 0) {
                     clearSeries();
                     setEmpty(true);
@@ -433,6 +518,9 @@ export function CandleChart({
                 close: price,
                 volume: tick.volume,
             };
+            // keep the indicator source buffer in sync — a new bucket must be
+            // appended (the same-bucket branch mutates the shared tail in place)
+            barsRef.current.push(bar);
         } else {
             bar.high = Math.max(bar.high, price);
             bar.low = Math.min(bar.low, price);
@@ -440,6 +528,7 @@ export function CandleChart({
             bar.volume += tick.volume;
         }
         lastBarRef.current = bar;
+        indDirtyRef.current = true; // mark indicators for redraw
         try {
             series.update({
                 time: bar.time as UTCTimestamp,
@@ -459,22 +548,36 @@ export function CandleChart({
         }
     }, [tick, contract.code, tf.minutes]);
 
-    // overlay indicators
+    // recompute every active indicator from the live bars buffer and setData
+    // onto its persistent series — series are never torn down here, so this
+    // can run on every tick (throttled) without flicker
+    const redrawIndicators = useCallback(() => {
+        const bars = barsRef.current;
+        for (const item of indSeriesRef.current) {
+            const pts = bars.length ? item.data(bars) : [];
+            item.series.setData(
+                pts.map((d) => ({
+                    time: d.time as UTCTimestamp,
+                    value: d.value,
+                })),
+            );
+        }
+    }, []);
+
+    // (re)build indicator series only when the enabled set changes
     useEffect(() => {
         const chart = chartRef.current;
         if (!chart) return;
-        for (const series of indSeriesRef.current) {
+        for (const item of indSeriesRef.current) {
             try {
-                chart.removeSeries(series);
+                chart.removeSeries(item.series);
             } catch {
                 // already gone with chart teardown
             }
         }
         indSeriesRef.current = [];
-        const bars = barsRef.current;
-        if (bars.length === 0) return;
         const addLine = (
-            data: { time: number; value: number }[],
+            data: (bars: Candle[]) => IndicatorPoint[],
             color: string,
             width: 1 | 2 = 1,
         ) => {
@@ -485,31 +588,43 @@ export function CandleChart({
                 lastValueVisible: false,
                 crosshairMarkerVisible: false,
             });
-            series.setData(
-                data.map((d) => ({
-                    time: d.time as UTCTimestamp,
-                    value: d.value,
-                })),
-            );
-            indSeriesRef.current.push(series);
+            indSeriesRef.current.push({ series, data });
         };
         for (const ind of INDICATORS) {
             if (!indicators.has(ind.key)) continue;
             if (ind.key.startsWith('ma')) {
-                addLine(sma(bars, Number(ind.key.slice(2))), ind.color);
+                const period = Number(ind.key.slice(2));
+                addLine((bars) => sma(bars, period), ind.color);
             } else if (ind.key === 'ema12') {
-                addLine(ema(bars, 12), ind.color);
+                addLine((bars) => ema(bars, 12), ind.color);
             } else if (ind.key === 'vwap') {
-                addLine(vwap(bars), ind.color, 2);
+                addLine((bars) => vwap(bars), ind.color, 2);
             } else if (ind.key === 'bb') {
-                const b = bollinger(bars);
-                addLine(b.mid, ind.color);
-                addLine(b.upper, ind.color);
-                addLine(b.lower, ind.color);
+                addLine((bars) => bollinger(bars).mid, ind.color);
+                addLine((bars) => bollinger(bars).upper, ind.color);
+                addLine((bars) => bollinger(bars).lower, ind.color);
             }
         }
+        redrawIndicators();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dataVersion, indicators]);
+    }, [indicators]);
+
+    // refill indicators whenever history (re)loads or clears
+    useEffect(() => {
+        redrawIndicators();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dataVersion]);
+
+    // live ticks flag the buffer dirty; redraw at most ~2x/sec so the
+    // indicator tails track the forming bar without recomputing per tick
+    useEffect(() => {
+        const id = setInterval(() => {
+            if (!indDirtyRef.current) return;
+            indDirtyRef.current = false;
+            redrawIndicators();
+        }, 500);
+        return () => clearInterval(id);
+    }, [redrawIndicators]);
 
     const toggleIndicator = (key: string) => {
         setIndicators((prev) => {
@@ -559,12 +674,17 @@ export function CandleChart({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [orderKey, themeKey, contract.code]);
 
-    // drag an order line to modify its price
+    // drag an order line OR a trigger line to modify its price
     useEffect(() => {
         const host = hostRef.current;
         if (!host) return;
-        let dragging: { trade: Trade; line: IPriceLine; price: number } | null =
-            null;
+        // a draggable target is either a working order (commit via
+        // updateOrderPrice) or a stop/take/alert trigger (commit via
+        // updateTrigger) — tagged so `up` can branch on the commit path
+        type DragTarget =
+            | { type: 'order'; trade: Trade; line: IPriceLine }
+            | { type: 'trigger'; trigger: TriggerOrder; line: IPriceLine };
+        let dragging: (DragTarget & { price: number }) | null = null;
         // active document listeners — removed on unmount if a drag is live
         let activeMove: ((e: MouseEvent) => void) | null = null;
         let activeUp: (() => void) | null = null;
@@ -572,15 +692,25 @@ export function CandleChart({
         const yOf = (e: MouseEvent) =>
             e.clientY - host.getBoundingClientRect().top;
 
-        const findNear = (y: number) => {
+        const findNear = (y: number): DragTarget | null => {
             const series = candleSeriesRef.current;
             if (!series) return null;
+            // order lines first — they're thicker (broker reality) and win on
+            // overlap with a dashed trigger line
             for (const t of workingOrdersRef.current) {
                 const line = orderLinesRef.current.get(t.order.id);
                 if (!line) continue;
                 const coord = series.priceToCoordinate(line.options().price);
                 if (coord !== null && Math.abs(coord - y) <= 6) {
-                    return { trade: t, line };
+                    return { type: 'order', trade: t, line };
+                }
+            }
+            for (const t of triggersRef.current) {
+                const line = triggerLinesRef.current.get(t.id);
+                if (!line) continue;
+                const coord = series.priceToCoordinate(line.options().price);
+                if (coord !== null && Math.abs(coord - y) <= 6) {
+                    return { type: 'trigger', trigger: t, line };
                 }
             }
             return null;
@@ -601,11 +731,16 @@ export function CandleChart({
                 handleScroll: false,
                 handleScale: false,
             });
-            dragging = {
-                trade: hit.trade,
-                line: hit.line,
-                price: hit.line.options().price,
-            };
+            dragging = { ...hit, price: hit.line.options().price };
+            if (hit.type === 'trigger') {
+                console.debug(
+                    `[CandleChart] trigger-drag start: ${JSON.stringify({
+                        id: hit.trigger.id,
+                        kind: hit.trigger.kind,
+                        price: dragging.price,
+                    })}`,
+                );
+            }
 
             const move = (ev: MouseEvent) => {
                 const series = candleSeriesRef.current;
@@ -614,7 +749,13 @@ export function CandleChart({
                 if (raw === null) return;
                 const np = roundToTick(contractRef.current, Number(raw));
                 dragging.price = np;
-                dragging.line.applyOptions({ price: np });
+                try {
+                    dragging.line.applyOptions({ price: np });
+                } catch {
+                    // the line may have been removed mid-drag by a full redraw
+                    // (e.g. another trigger fired) — keep dragging.price; `up`
+                    // reconciles via id, not the line object
+                }
             };
             const up = () => {
                 document.removeEventListener('mousemove', move, true);
@@ -628,29 +769,75 @@ export function CandleChart({
                 const d = dragging;
                 dragging = null;
                 if (!d) return;
-                const orig =
-                    d.trade.status.modified_price || d.trade.order.price;
-                if (d.price === orig) return;
-                updateOrderPrice(d.trade.order.id, d.price)
-                    .then(() => {
-                        notify({
-                            kind: 'ok',
-                            title: '✏️ 改價已送出',
-                            body: `${d.trade.contract.code} ${fmtPrice(orig)} → ${fmtPrice(d.price)}`,
+                if (d.type === 'order') {
+                    const orig =
+                        d.trade.status.modified_price || d.trade.order.price;
+                    if (d.price === orig) return;
+                    updateOrderPrice(d.trade.order.id, d.price)
+                        .then(() => {
+                            notify({
+                                kind: 'ok',
+                                title: '✏️ 改價已送出',
+                                body: `${d.trade.contract.code} ${fmtPrice(orig)} → ${fmtPrice(d.price)}`,
+                            });
+                            onOrdersChangedRef.current?.();
+                        })
+                        .catch((err) => {
+                            notify({
+                                kind: 'err',
+                                title: '改價失敗',
+                                body:
+                                    err instanceof Error
+                                        ? err.message
+                                        : String(err),
+                            });
+                            onOrdersChangedRef.current?.();
                         });
-                        onOrdersChangedRef.current?.();
-                    })
-                    .catch((err) => {
-                        notify({
-                            kind: 'err',
-                            title: '改價失敗',
-                            body:
-                                err instanceof Error
-                                    ? err.message
-                                    : String(err),
-                        });
-                        onOrdersChangedRef.current?.();
+                    return;
+                }
+                // trigger line — commit via updateTrigger, but guard the
+                // "would fire immediately" case: a stop/take fires a
+                // risk-bypassing market order, so dragging past the last price
+                // must never auto-submit (revert + warn instead)
+                const t = d.trigger;
+                if (d.price === t.price) return;
+                const last = lastPriceRef.current;
+                const wouldFire =
+                    last !== null &&
+                    ((t.condition === 'below' && last <= d.price) ||
+                        (t.condition === 'above' && last >= d.price));
+                if (wouldFire) {
+                    // revert to the original price — guaranteed safe side, since
+                    // the trigger had not fired before the drag began
+                    d.line.applyOptions({ price: t.price });
+                    console.debug(
+                        `[CandleChart] trigger-drag blocked (would fire): ${JSON.stringify(
+                            { id: t.id, price: d.price, last },
+                        )}`,
+                    );
+                    notify({
+                        kind: 'err',
+                        title: '改價已取消',
+                        body: `${t.code} 觸價 ${t.condition === 'below' ? '≤' : '≥'} ${fmtPrice(d.price)} 會立即成交,已還原`,
                     });
+                    return;
+                }
+                const updated = updateTrigger(t.id, d.price);
+                if (updated) {
+                    console.debug(
+                        `[CandleChart] trigger-drag commit: ${JSON.stringify({
+                            id: t.id,
+                            from: t.price,
+                            to: d.price,
+                        })}`,
+                    );
+                    notify({
+                        kind: 'ok',
+                        title: t.kind === 'alert' ? '🔔 警示改價' : '✏️ 觸價改價',
+                        body: `${t.code} ${fmtPrice(t.price)} → ${fmtPrice(d.price)}`,
+                    });
+                }
+                // updated === undefined ⇒ trigger removed mid-drag, skip silently
             };
             document.addEventListener('mousemove', move, true);
             document.addEventListener('mouseup', up, true);
@@ -671,33 +858,60 @@ export function CandleChart({
         };
     }, []);
 
-    // draw trigger price lines on the candle series
+    // draw trigger price lines on the candle series — stored in a ref keyed by
+    // trigger id so the drag handler can hit them (same Map<id, IPriceLine>
+    // pattern as the working-order effect above)
     useEffect(() => {
         const series = candleSeriesRef.current;
         if (!series) return;
-        const lines = triggers.map((t) =>
+        const lines = new Map<string, IPriceLine>();
+        for (const t of triggers) {
+            lines.set(
+                t.id,
+                series.createPriceLine({
+                    price: t.price,
+                    color:
+                        t.kind === 'stop'
+                            ? '#e0a43c'
+                            : t.kind === 'alert'
+                              ? '#8b94a7'
+                              : colors.crosshair,
+                    lineWidth: 1,
+                    lineStyle: 2, // dashed
+                    axisLabelVisible: true,
+                    // no on-pane title — the trigger list (top-left) already
+                    // shows kind/condition/price, and the label overlapped candles
+                }),
+            );
+        }
+        triggerLinesRef.current = lines;
+        return () => {
+            for (const line of lines.values()) series.removePriceLine(line);
+            triggerLinesRef.current = new Map();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(triggers), themeKey, contract.code]);
+
+    // draw position average-cost line(s) on the candle series
+    useEffect(() => {
+        const series = candleSeriesRef.current;
+        if (!series) return;
+        const lines = positionLines.map((p) =>
             series.createPriceLine({
-                price: t.price,
-                color:
-                    t.kind === 'stop'
-                        ? '#e0a43c'
-                        : t.kind === 'alert'
-                          ? '#8b94a7'
-                          : colors.crosshair,
+                price: p.price,
+                color: colors.cost,
                 lineWidth: 1,
-                lineStyle: 2, // dashed
-                axisLabelVisible: true,
-                title:
-                    t.kind === 'alert'
-                        ? '警示'
-                        : `${t.kind === 'stop' ? '停損' : '停利'}${t.action === 'Buy' ? '買' : '賣'}${t.quantity}`,
+                lineStyle: 1, // dotted — distinct from orders (solid) / triggers (dashed)
+                // no right-axis label — the cost price is drawn as a custom tag
+                // on the LEFT so it stops clashing with the right-side price label
+                axisLabelVisible: false,
             }),
         );
         return () => {
             for (const line of lines) series.removePriceLine(line);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(triggers), themeKey, contract.code]);
+    }, [positionKey, themeKey, contract.code]);
 
     return (
         <div className={styles.wrap}>
@@ -791,17 +1005,48 @@ export function CandleChart({
                         <span className={panel.mono}>無 K 線資料</span>
                     </div>
                 )}
-                {mode !== 'observe' && (
-                    <div className={styles.modeHint}>
-                        {mode === 'buy' && '點擊圖表價位 → 限價買進'}
-                        {mode === 'sell' && '點擊圖表價位 → 限價賣出'}
-                        {mode === 'stop' && '點擊價位掛停損（觸價市價單）'}
-                        {mode === 'take' && '點擊價位掛停利（觸價市價單）'}
-                        {mode === 'alert' && '點擊價位設定到價警示（只通知不下單）'}
+                {(mode !== 'observe' || magnetOn) && (
+                    <div className={styles.hintStack}>
+                        {mode !== 'observe' && (
+                            <div className={styles.modeHint}>
+                                {mode === 'buy' && '點擊圖表價位 → 限價買進'}
+                                {mode === 'sell' && '點擊圖表價位 → 限價賣出'}
+                                {mode === 'stop' && '點擊價位掛停損（觸價市價單）'}
+                                {mode === 'take' && '點擊價位掛停利（觸價市價單）'}
+                                {mode === 'alert' &&
+                                    '點擊價位設定到價警示（只通知不下單）'}
+                            </div>
+                        )}
+                        {magnetOn && (
+                            <div className={styles.magnetHint}>
+                                磁吸中 · 放開 ⌥ 自由游標
+                            </div>
+                        )}
                     </div>
                 )}
-                {(workingOrders.length > 0 || triggers.length > 0) && (
+                {(positionLines.length > 0 ||
+                    workingOrders.length > 0 ||
+                    triggers.length > 0) && (
                     <div className={styles.triggerList}>
+                        {positionLines.map((p) => (
+                            <div
+                                key={`pos-${p.code}`}
+                                className={styles.triggerRow}
+                            >
+                                <span
+                                    className={
+                                        panel.dirText[
+                                            p.direction === 'Buy'
+                                                ? 'up'
+                                                : 'down'
+                                        ]
+                                    }
+                                >
+                                    {p.direction === 'Buy' ? '▲ 多' : '▼ 空'}
+                                    {p.quantity} @{fmtPrice(p.price)}
+                                </span>
+                            </div>
+                        ))}
                         {workingOrders.map((t) => {
                             const price =
                                 t.status.modified_price || t.order.price;
