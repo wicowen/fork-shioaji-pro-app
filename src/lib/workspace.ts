@@ -17,13 +17,15 @@ export type BlockType =
     | 'optchain'
     | 'replay'
     | 'depthmap'
+    | 'orderflow'
     | 'combo'
     | 'notices'
     | 'debug'
     | 'grid'
     | 'heatmap'
     | 'optpnl'
-    | 'assistant';
+    | 'assistant'
+    | 'rollover';
 
 export interface Block {
     id: string;
@@ -135,6 +137,12 @@ export const BLOCK_META: Record<
         singleton: false,
         defaultSize: { w: 8, h: 9, minW: 5, minH: 6 },
     },
+    orderflow: {
+        label: '盤口力道',
+        pinnable: true,
+        singleton: false,
+        defaultSize: { w: 5, h: 13, minW: 4, minH: 9 },
+    },
     combo: {
         label: '組合單',
         pinnable: false,
@@ -176,6 +184,12 @@ export const BLOCK_META: Record<
         pinnable: false,
         singleton: true,
         defaultSize: { w: 7, h: 14, minW: 5, minH: 9 },
+    },
+    rollover: {
+        label: '轉倉監控',
+        pinnable: false,
+        singleton: true,
+        defaultSize: { w: 8, h: 10, minW: 5, minH: 6 },
     },
 };
 

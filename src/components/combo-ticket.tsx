@@ -10,6 +10,7 @@ import { useQuote, useTradingLive } from '../hooks/use-stream';
 import { usePoll } from '../hooks/use-poll';
 import { ensureContract } from '../lib/contracts-cache';
 import { useOptionLegPick } from '../lib/option-pick';
+import { clearPendingRoll, useRollHandoff } from '../lib/roll-handoff';
 import {
     cancelComboOrder,
     fetchComboTrades,
@@ -151,6 +152,7 @@ export function ComboTicket() {
     const [linkChain, setLinkChain] = useState(false); // 連動 T 字
     const live = useTradingLive();
     const optPick = useOptionLegPick();
+    const rollIntent = useRollHandoff();
 
     const tradesPoll = usePoll<ComboTrade[]>(
         useCallback(() => fetchComboTrades().catch(() => []), []),
@@ -207,6 +209,23 @@ export function ComboTicket() {
         setArmed(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [optPick?.seq, linkChain]);
+
+    // 轉倉監控交接：把「平近月 / 建次月」兩腳一次填入並解析報價。one-shot —
+    // 消費後 clearPendingRoll，避免 combo 面板重新掛載時又套用舊的轉倉意圖。
+    useEffect(() => {
+        if (!rollIntent) return;
+        const [a, b] = rollIntent.legs;
+        setLegs([
+            { ...EMPTY_LEG, action: a.action, input: a.code },
+            { ...EMPTY_LEG, action: b.action, input: b.code },
+        ]);
+        void resolveCode(0, a.code);
+        void resolveCode(1, b.code);
+        setPriceTouched(false); // 讓合成中價 autofill 重新帶入淨價
+        setArmed(false);
+        clearPendingRoll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rollIntent?.seq]);
 
     const synth = useSynthetic(legs);
     // autofill price from synthetic mid until the user edits it

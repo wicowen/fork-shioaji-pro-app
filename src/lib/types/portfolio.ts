@@ -35,6 +35,12 @@ export interface FuturePosition {
 
 export type Position = StockPosition | FuturePosition;
 
+// stock positions carry yd_quantity; futures ones don't — narrow a merged
+// Position to the futures shape for rollover / contract logic
+export function isFuturePosition(p: Position): p is FuturePosition {
+    return !('yd_quantity' in p);
+}
+
 export interface AccountBalance {
     acc_balance: number;
     date: string;

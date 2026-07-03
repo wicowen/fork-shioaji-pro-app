@@ -30,11 +30,13 @@ import { GridTicket } from './components/grid-ticket';
 import { NoticeCenter } from './components/notice-center';
 import { FeatureGate } from './components/feature-gate';
 import { OptPayoff } from './components/opt-payoff';
+import { RolloverPanel } from './components/rollover-panel';
 import { SectorHeatmap } from './components/sector-heatmap';
 import { PnlPanel } from './components/pnl-panel';
 import { VolProfile } from './components/vol-profile';
 import { ReplayPanel } from './components/replay-panel';
 import { DepthMap } from './components/depth-map';
+import { OrderFlow } from './components/order-flow';
 import { PanelChrome } from './components/panel-chrome';
 import { QuoteBoard } from './components/quote-board';
 import { ScannerPanel } from './components/scanner-panel';
@@ -90,6 +92,7 @@ const POPOUT_TYPES: ReadonlySet<string> = new Set([
     'pnl',
     'replay',
     'depthmap',
+    'orderflow',
 ]);
 
 const popoutQuery = new URLSearchParams(window.location.search);
@@ -124,6 +127,7 @@ function BlockBody({
     dockProps,
     onSelectCode,
     refreshTrading,
+    onAddCombo,
 }: {
     block: Block;
     contract: ContractInfo | null;
@@ -132,6 +136,7 @@ function BlockBody({
     dockProps: React.ComponentProps<typeof BottomDock>;
     onSelectCode: (code: string) => void;
     refreshTrading: () => void;
+    onAddCombo: () => void;
 }) {
     switch (block.type) {
         case 'watchlist':
@@ -218,6 +223,14 @@ function BlockBody({
             return <SectorHeatmap onPick={onSelectCode} />;
         case 'optpnl':
             return <OptPayoff positions={dockProps.positions} />;
+        case 'rollover':
+            return (
+                <RolloverPanel
+                    positions={dockProps.positions}
+                    onAddCombo={onAddCombo}
+                    onSelectCode={onSelectCode}
+                />
+            );
         case 'assistant': {
             const Panel = agentModule?.Panel;
             return (
@@ -238,6 +251,12 @@ function BlockBody({
             ) : (
                 <BlockPlaceholder />
             );
+        case 'orderflow':
+            return contract ? (
+                <OrderFlow contract={contract} />
+            ) : (
+                <BlockPlaceholder />
+            );
     }
 }
 
@@ -255,6 +274,7 @@ interface BlockViewProps {
     dockProps: React.ComponentProps<typeof BottomDock>;
     onSelectCode: (code: string) => void;
     refreshTrading: () => void;
+    onAddCombo: () => void;
 }
 
 function BlockView(props: BlockViewProps) {
@@ -390,6 +410,9 @@ function PopoutView({
                 break;
             case 'depthmap':
                 body = <DepthMap contract={contract} />;
+                break;
+            case 'orderflow':
+                body = <OrderFlow contract={contract} />;
                 break;
             default:
                 break;
@@ -818,6 +841,7 @@ export default function App() {
                                     dockProps={dockProps}
                                     onSelectCode={selectByCode}
                                     refreshTrading={refreshTrading}
+                                    onAddCombo={() => addBlock('combo')}
                                 />
                             </div>
                         ))}

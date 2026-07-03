@@ -6,10 +6,12 @@ import App from './App';
 import './index.css';
 import { bootstrap } from './lib/boot';
 import { initTheme } from './lib/theme-store';
+import { startRolloverEngine } from './lib/rollover-engine';
 import { startTriggerEngine } from './lib/trigger-engine';
 
 initTheme();
 startTriggerEngine();
+startRolloverEngine();
 bootstrap();
 
 const rootElement = document.getElementById('root');
