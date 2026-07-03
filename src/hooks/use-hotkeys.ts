@@ -7,7 +7,7 @@ import { cancelAllOrders, notify } from '../lib/trade';
 
 export const TICKET_ACTION_EVENT = 'sj-ticket-action';
 
-function isTyping(): boolean {
+export function isTyping(): boolean {
     const el = document.activeElement;
     return (
         !!el &&

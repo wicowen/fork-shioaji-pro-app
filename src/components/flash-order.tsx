@@ -17,6 +17,7 @@ import {
     useState,
 } from 'react';
 import { useQuote, useTradingLive } from '../hooks/use-stream';
+import { isTyping } from '../hooks/use-hotkeys';
 import { maskMoney, usePrivacyMoney } from '../lib/privacy';
 import { cancelOrder } from '../lib/shioaji';
 import { getAliasFor, onOrderEvent } from '../lib/stream';
@@ -32,6 +33,22 @@ const ROW_H = 22; // must match row height in flash-order.css.ts
 const EDGE = 2; // auto-recenter when last price gets this close to the edge
 
 const keyOf = (p: number) => p.toFixed(2);
+
+// Flash action hotkeys, matched by the shifted character they produce (Shift+,
+// Shift+. Shift+; Shift+[) so the binding stays keyboard-layout aware.
+const FLASH_HOTKEYS: Record<string, 'buy' | 'sell' | 'flatten' | 'cancel'> = {
+    '<': 'buy', // Shift+,
+    '>': 'sell', // Shift+.
+    ':': 'flatten', // Shift+;
+    '{': 'cancel', // Shift+[
+};
+
+// Hotkeys only ever target the SOLE armed panel: every armed panel registers a
+// token here so each instance can tell whether it owns the keyboard (size === 1)
+// or must stay silent because 2+ panels are armed at once — one keypress must
+// never blast market orders across several panels.
+const armedPanels = new Set<symbol>();
+let lastMultiArmedNotice = 0;
 
 interface RowProps {
     price: number;
@@ -210,6 +227,9 @@ export function FlashOrder({
     followRef.current = follow;
     const hoverRef = useRef(false);
     const inflightRef = useRef(new Set<string>());
+    // stable per-instance identity for the armed-panel registry
+    const panelTokenRef = useRef<symbol | undefined>(undefined);
+    if (!panelTokenRef.current) panelTokenRef.current = Symbol('flash-panel');
     const onOrdersChangedRef = useRef(onOrdersChanged);
     onOrdersChangedRef.current = onOrdersChanged;
 
@@ -234,6 +254,17 @@ export function FlashOrder({
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
+    }, [armed]);
+
+    // join/leave the armed-panel registry so the action hotkeys below can tell
+    // whether this is the sole armed panel
+    useEffect(() => {
+        if (!armed) return;
+        const token = panelTokenRef.current!;
+        armedPanels.add(token);
+        return () => {
+            armedPanels.delete(token);
+        };
     }, [armed]);
 
     // viewport rows = whatever fits the panel height
@@ -560,6 +591,36 @@ export function FlashOrder({
         void send(pos.net > 0 ? 'Sell' : 'Buy', null);
     }, [pos, send]);
 
+    // action hotkeys (Shift+,/./;/[) — active only while this panel is armed,
+    // and only when it is the single armed panel; 2+ armed -> ignored with a
+    // throttled notice so one keypress can't fire orders on every panel.
+    useEffect(() => {
+        if (!armed) return;
+        const onKey = (e: KeyboardEvent) => {
+            const act = FLASH_HOTKEYS[e.key];
+            if (!act || isTyping()) return;
+            e.preventDefault();
+            if (armedPanels.size > 1) {
+                const now = performance.now();
+                if (now - lastMultiArmedNotice > 1000) {
+                    lastMultiArmedNotice = now;
+                    notify({
+                        kind: 'info',
+                        title: '⚡ 熱鍵停用',
+                        body: '同時啟用多個閃電面板時，請只保留一個再用熱鍵',
+                    });
+                }
+                return;
+            }
+            if (act === 'buy') void send('Buy', null);
+            else if (act === 'sell') void send('Sell', null);
+            else if (act === 'flatten') flatten();
+            else void cancelSymbol();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [armed, send, flatten, cancelSymbol]);
+
     // ---- render ----
 
     const lastKey = last !== null ? keyOf(roundToTick(contract, last)) : '';
@@ -639,12 +700,14 @@ export function FlashOrder({
             <div className={styles.actionBar}>
                 <button
                     className={`${styles.mktBtn.buy} ${armed ? '' : styles.disabledCell}`}
+                    title='市價買（⇧<）'
                     onClick={() => void send('Buy', null)}
                 >
                     市價買
                 </button>
                 <button
                     className={`${styles.mktBtn.sell} ${armed ? '' : styles.disabledCell}`}
+                    title='市價賣（⇧>）'
                     onClick={() => void send('Sell', null)}
                 >
                     市價賣
@@ -652,7 +715,7 @@ export function FlashOrder({
                 {pos && (
                     <button
                         className={`${styles.flatBtn} ${armed ? '' : styles.disabledCell}`}
-                        title={`市價平倉 ${Math.abs(pos.net)}`}
+                        title={`市價平倉 ${Math.abs(pos.net)}（⇧:）`}
                         onClick={flatten}
                     >
                         平倉
@@ -660,6 +723,7 @@ export function FlashOrder({
                 )}
                 <button
                     className={styles.cancelAllBtn}
+                    title='全刪本商品委託（⇧{）'
                     disabled={workingCount === 0}
                     onClick={() => void cancelSymbol()}
                 >
@@ -754,7 +818,7 @@ export function FlashOrder({
             </div>
             <div className={styles.hint}>
                 {armed
-                    ? '點買量=限價買 · 點賣量=限價賣 · 點單量=刪單 · Esc 鎖定'
+                    ? '⇧< 買 ⇧> 賣 ⇧: 平 ⇧{ 刪 · 點量=限價/刪單 · Esc 鎖定'
                     : '安全鎖定中 — 點「啟用閃電下單」解鎖 · 滾輪捲動 · 雙擊置中'}
             </div>
         </div>
