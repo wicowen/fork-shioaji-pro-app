@@ -168,8 +168,8 @@ export function ServerManager({
     const importEnv = async () => {
         const found = await pickEnvFile();
         if (!found) return; // dialog cancelled
-        if (!found.apiKey && !found.secretKey) {
-            setEnvMsg('該檔案裡沒有找到 SJ_API_KEY / SJ_SEC_KEY');
+        if (found.error) {
+            setEnvMsg(found.error);
             return;
         }
         setEnvMsg('');
@@ -438,7 +438,7 @@ export function ServerManager({
                         />
                         <button className={styles.updateBtn} onClick={importEnv}>
                             <FileUp size={13} />
-                            從 .env 檔案匯入
+                            選資料夾自動讀取 .env
                         </button>
                         {envMsg && (
                             <span

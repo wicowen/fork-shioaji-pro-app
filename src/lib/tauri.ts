@@ -583,25 +583,44 @@ function parseEnvKeys(
     return out;
 }
 
-// lets the user pick a .env file (e.g. from a shioaji project checkout)
-// and pulls SJ_API_KEY/SJ_SEC_KEY straight out of it — no extension filter
-// since ".env" has no conventional extension and dialog filters are
-// unreliable for dotfiles across platforms
+// candidate filenames, in priority order — first one both present AND
+// containing at least one of the two keys wins
+const ENV_FILENAMES = ['.env', '.env.local', '.env.development'];
+
+// lets the user pick a project FOLDER (not the .env file itself) and pulls
+// SJ_API_KEY/SJ_SEC_KEY out of the first candidate found inside it.
+// Native open-file dialogs hide dotfiles by default (macOS/Windows/Linux
+// file pickers all do this — there's no cross-platform API flag to force
+// them visible, only an undiscoverable OS-level shortcut on macOS), so
+// ".env" itself is invisible if picked directly. A directory listing via
+// the fs plugin isn't subject to that UI-level filtering, so picking the
+// containing folder and reading its entries sidesteps the problem entirely.
 export async function pickEnvFile(): Promise<{
     apiKey?: string;
     secretKey?: string;
+    error?: string;
 } | null> {
     if (!isTauri) return null;
     const { open } = await import('@tauri-apps/plugin-dialog');
-    const path = await open({
-        multiple: false,
-        directory: false,
-        title: '選擇 .env 檔案（讀取 SJ_API_KEY / SJ_SEC_KEY）',
+    const dir = await open({
+        directory: true,
+        title: '選擇專案資料夾（自動尋找裡面的 .env）',
     });
-    if (typeof path !== 'string') return null;
-    const { readTextFile } = await import('@tauri-apps/plugin-fs');
-    const text = await readTextFile(path);
-    return parseEnvKeys(text);
+    if (typeof dir !== 'string') return null; // dialog cancelled
+    const { readDir, readTextFile } = await import('@tauri-apps/plugin-fs');
+    const entries = await readDir(dir).catch(() => []);
+    const names = new Set(entries.filter((e) => e.isFile).map((e) => e.name));
+    for (const candidate of ENV_FILENAMES) {
+        if (!names.has(candidate)) continue;
+        const text = await readTextFile(`${dir}/${candidate}`).catch(
+            () => '',
+        );
+        const found = parseEnvKeys(text);
+        if (found.apiKey || found.secretKey) return found;
+    }
+    return {
+        error: `這個資料夾裡沒找到含 SJ_API_KEY / SJ_SEC_KEY 的 .env 檔（找過：${ENV_FILENAMES.join('、')}）`,
+    };
 }
 
 // ---- popout windows ----

@@ -51,8 +51,8 @@ export function OnboardingSetup() {
     const importEnv = async () => {
         const found = await pickEnvFile();
         if (!found) return; // dialog cancelled
-        if (!found.apiKey && !found.secretKey) {
-            setError('該檔案裡沒有找到 SJ_API_KEY / SJ_SEC_KEY');
+        if (found.error) {
+            setError(found.error);
             return;
         }
         setError('');
@@ -114,7 +114,7 @@ export function OnboardingSetup() {
                         onClick={importEnv}
                     >
                         <FileUp size={13} />
-                        從 .env 檔案匯入
+選資料夾自動讀取 .env
                     </button>
 
                     <div className={styles.fieldGroup}>
